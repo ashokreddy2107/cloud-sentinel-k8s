@@ -10,9 +10,13 @@
                     "path": "ui/package.json",
                     "jsonpath": "$.version"
                 },
-                "charts/cloud-sentinel-k8s/Chart.yaml",
+                "README.md"
+            ]
+        },
+        "charts/cloud-sentinel-k8s": {
+            "release-type": "helm",
+            "extra-files": [
                 "charts/cloud-sentinel-k8s/values.yaml",
-                "README.md",
                 "charts/cloud-sentinel-k8s/README.md"
             ]
         }
