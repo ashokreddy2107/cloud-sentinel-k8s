@@ -16,6 +16,10 @@ type Role struct {
 	Assignments []RoleAssignment `json:"assignments" gorm:"foreignKey:RoleID;constraint:OnDelete:CASCADE"`
 }
 
+func (Role) TableName() string {
+	return "k8s_roles"
+}
+
 // RoleAssignment maps a role to a subject which can be a user or an OIDC group.
 // SubjectType: 'user' or 'group'
 type RoleAssignment struct {

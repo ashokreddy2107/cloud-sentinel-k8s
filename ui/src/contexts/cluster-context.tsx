@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Cluster } from '@/types/api'
 import { withSubPath } from '@/lib/subpath'
+import { useAuth } from './auth-context'
 
 interface ClusterContextType {
   clusters: Cluster[]
@@ -22,11 +24,20 @@ export const ClusterContext = createContext<ClusterContextType | undefined>(
 export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [currentCluster, setCurrentClusterState] = useState<string | null>(
-    localStorage.getItem('current-cluster')
-  )
+  const params = useParams<{ cluster?: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [isSwitching, setIsSwitching] = useState(false)
+  const { user, isLoading: isAuthLoading } = useAuth()
+
+  // Determine current cluster: URL param usually takes precedence, but if missing (global routes), use storage
+  const urlCluster = params.cluster
+  const [storedCluster, setStoredCluster] = useState<string | null>(
+    localStorage.getItem('current-cluster')
+  )
+
+  const currentCluster = urlCluster || storedCluster
 
   // Fetch clusters from API (this request shouldn't need cluster header)
   const {
@@ -62,60 +73,93 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
     staleTime: 5 * 60 * 1000, // 5 minutes
   })
 
-  // Set default cluster if none is selected
+  // Sync state with validation
   useEffect(() => {
-    if (clusters.length > 0 && !currentCluster) {
-      const defaultCluster = clusters.find((c) => c.isDefault)
-      if (defaultCluster) {
-        setCurrentClusterState(defaultCluster.name)
-        document.cookie = `x-cluster-name=${defaultCluster.name}; path=/`
+    if (clusters.length > 0) {
+      if (!currentCluster) {
+        // No cluster selected or in URL -> Find default
+        const defaultCluster = clusters.find((c) => c.isDefault) || clusters[0]
+        setStoredCluster(defaultCluster.name)
         localStorage.setItem('current-cluster', defaultCluster.name)
+        // We don't force navigate here, the RootRedirector or user action will handle it
+      } else if (!clusters.some((c) => c.name === currentCluster)) {
+        // Current cluster (URL or Stored) is invalid
+        if (storedCluster === currentCluster) {
+          setStoredCluster(null)
+          localStorage.removeItem('current-cluster')
+        }
+
+        // If URL has an invalid cluster, redirect to default
+        if (urlCluster) {
+          const defaultCluster = clusters.find((c) => c.isDefault) || clusters[0]
+          if (defaultCluster) {
+            navigate(`/c/${defaultCluster.name}/dashboard`, { replace: true })
+          }
+        }
       } else {
-        // If no default cluster, use the first one
-        setCurrentClusterState(clusters[0].name)
-        localStorage.setItem('current-cluster', clusters[0].name)
-        document.cookie = `x-cluster-name=${clusters[0].name}; path=/`
+        // Valid current cluster, ensure cookies/storage match
+        if (currentCluster !== storedCluster) {
+          setStoredCluster(currentCluster)
+          localStorage.setItem('current-cluster', currentCluster)
+        }
+        document.cookie = `x-cluster-name=${currentCluster}; path=/`
       }
     }
-    if (
-      currentCluster &&
-      clusters.length > 0 &&
-      !clusters.some((c) => c.name === currentCluster)
-    ) {
-      // If current cluster is not in the list, reset it
-      setCurrentClusterState(null)
-      localStorage.removeItem('current-cluster')
-      document.cookie =
-        'x-cluster-name=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+  }, [clusters, currentCluster, storedCluster])
+
+  // If admin is logged in and no clusters are found, redirect to settings
+  useEffect(() => {
+    if (!isLoading && !isAuthLoading && clusters.length === 0 && user?.isAdmin()) {
+      // Avoid infinite redirect loop if already on settings
+      if (!location.pathname.startsWith('/settings')) {
+        navigate('/settings?tab=clusters')
+      }
     }
-  }, [clusters, currentCluster])
+  }, [isLoading, isAuthLoading, clusters, user, location.pathname, navigate])
+
 
   const setCurrentCluster = (clusterName: string) => {
-    if (clusterName !== currentCluster && !isSwitching) {
-      try {
-        setIsSwitching(true)
-        setCurrentClusterState(clusterName)
-        localStorage.setItem('current-cluster', clusterName)
-        document.cookie = `x-cluster-name=${clusterName}; path=/`
-        setTimeout(async () => {
-          await queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey[0] as string
-              return !['user', 'auth', 'clusters'].includes(key)
-            },
-          })
-          setIsSwitching(false)
-          toast.success(`Switched to cluster: ${clusterName}`, {
-            id: 'cluster-switch',
-          })
-        }, 300)
-      } catch (error) {
-        console.error('Failed to switch cluster:', error)
+    if (clusterName === currentCluster) return
+
+    try {
+      setIsSwitching(true)
+
+      // Update storage/cookies immediately
+      localStorage.setItem('current-cluster', clusterName)
+      setStoredCluster(clusterName)
+      document.cookie = `x-cluster-name=${clusterName}; path=/`
+
+      setTimeout(async () => {
+        await queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = query.queryKey[0] as string
+            return !['user', 'auth', 'clusters'].includes(key)
+          },
+        })
+
         setIsSwitching(false)
-        toast.error('Failed to switch cluster', {
+        toast.success(`Switched to cluster: ${clusterName}`, {
           id: 'cluster-switch',
         })
-      }
+
+        // Navigate
+        if (location.pathname.startsWith('/c/')) {
+          // Replace cluster part
+          // /c/old/foo -> /c/new/foo
+          const newPath = location.pathname.replace(/^\/c\/[^/]+/, `/c/${clusterName}`)
+          navigate(newPath)
+        } else {
+          // From global page -> go to dashboard of new cluster
+          navigate(`/c/${clusterName}/dashboard`)
+        }
+
+      }, 300)
+    } catch (error) {
+      console.error('Failed to switch cluster:', error)
+      setIsSwitching(false)
+      toast.error('Failed to switch cluster', {
+        id: 'cluster-switch',
+      })
     }
   }
 

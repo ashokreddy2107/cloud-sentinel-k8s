@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/utils"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -16,16 +16,40 @@ type User struct {
 	Password    string      `json:"-" gorm:"type:varchar(255)"`
 	Name        string      `json:"name,omitempty" gorm:"type:varchar(100);index"`
 	AvatarURL   string      `json:"avatar_url,omitempty" gorm:"type:varchar(500)"`
-	Provider    string      `json:"provider,omitempty" gorm:"type:varchar(50);default:password;index"`
-	OIDCGroups  SliceString `json:"oidc_groups,omitempty" gorm:"type:text"`
+	Provider    string      `json:"provider,omitempty" gorm:"-"`
+	OIDCGroups  SliceString `json:"oidc_groups,omitempty" gorm:"-"`
 	LastLoginAt *time.Time  `json:"lastLoginAt,omitempty" gorm:"type:timestamp;index"`
 	Enabled     bool        `json:"enabled" gorm:"type:boolean;default:true"`
-	Sub         string      `json:"sub,omitempty" gorm:"type:varchar(255);index"`
+	Sub         string      `json:"sub,omitempty" gorm:"-"`
 
-	APIKey SecretString  `json:"apiKey,omitempty" gorm:"type:text"`
-	Roles  []common.Role `json:"roles,omitempty" gorm:"-"`
+	Roles             []common.Role `json:"roles,omitempty" gorm:"-"`
+	SidebarPreference string        `json:"sidebar_preference,omitempty" gorm:"type:text"`
+}
 
-	SidebarPreference string `json:"sidebar_preference,omitempty" gorm:"type:text"`
+type PersonalAccessToken struct {
+	Model
+	UserID      uint       `json:"userId" gorm:"not null;index"`
+	Name        string     `json:"name" gorm:"type:varchar(255);not null"`
+	TokenDigest string     `json:"-" gorm:"type:varchar(255);uniqueIndex;not null"`
+	Prefix      string     `json:"prefix" gorm:"type:varchar(10);not null"`
+	ExpiresAt   *time.Time `json:"expiresAt" gorm:"type:timestamp"`
+	LastUsedAt  *time.Time `json:"lastUsedAt" gorm:"type:timestamp"`
+	LastUsedIP  string     `json:"lastUsedIP" gorm:"type:text"` // Comma-separated or just the last used IP(s)
+
+	// Relationship
+	User User `json:"user" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+}
+
+type UserIdentity struct {
+	Model
+	UserID      uint        `json:"user_id" gorm:"index;not null;uniqueIndex:idx_user_provider"`
+	Provider    string      `json:"provider" gorm:"type:varchar(50);not null;uniqueIndex:idx_provider_provider_id;uniqueIndex:idx_user_provider"`
+	ProviderID  string      `json:"provider_id" gorm:"type:varchar(255);not null;uniqueIndex:idx_provider_provider_id"`
+	OIDCGroups  SliceString `json:"oidc_groups,omitempty" gorm:"type:text"`
+	LastLoginAt *time.Time  `json:"last_login_at,omitempty" gorm:"type:timestamp"`
+
+	// Relationships
+	User User `json:"user" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
 func (u *User) Key() string {
@@ -39,10 +63,6 @@ func (u *User) Key() string {
 		return u.Sub
 	}
 	return fmt.Sprintf("%d", u.ID)
-}
-
-func (u *User) GetAPIKey() string {
-	return fmt.Sprintf("kite%d-%s", u.ID, string(u.APIKey))
 }
 
 func AddUser(user *User) error {
@@ -67,33 +87,115 @@ func GetUserByID(id uint64) (*User, error) {
 	return &user, nil
 }
 
-func GetAnonymousUser() *User {
-	user := &User{}
-	if err := DB.Where("username = ? AND provider = ?", "anonymous", "Anonymous").First(user).Error; err != nil {
-		return nil
-	}
-	return user
-}
-
 func FindWithSubOrUpsertUser(user *User) error {
-	if user.Sub == "" {
+	// Capture input values to create identity later if needed
+	inputProvider := user.Provider
+	if inputProvider == "" {
+		return errors.New("user provider is empty")
+	}
+	inputSub := user.Sub
+	if inputSub == "" {
 		return errors.New("user sub is empty")
 	}
-	var existingUser User
-	now := time.Now()
-	user.LastLoginAt = &now
-	if err := DB.Where("sub = ?", user.Sub).First(&existingUser).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return DB.Create(user).Error
+	inputOIDCGroups := user.OIDCGroups
+
+	var identity UserIdentity
+	// Try to find identity first
+	err := DB.Preload("User").Where("provider = ? AND provider_id = ?", inputProvider, inputSub).First(&identity).Error
+	if err == nil {
+		// Identity found, update the user object with the one found in DB
+		*user = identity.User
+
+		// Restore transient fields from identity
+		user.Sub = identity.ProviderID
+		user.OIDCGroups = identity.OIDCGroups
+
+		// Update LastLoginAt
+		now := time.Now()
+		user.LastLoginAt = &now
+		identity.LastLoginAt = &now
+
+		// Update OIDC groups on identity if changed
+		updatesNeeded := false
+		if fmt.Sprintf("%v", identity.OIDCGroups) != fmt.Sprintf("%v", inputOIDCGroups) {
+			identity.OIDCGroups = inputOIDCGroups
+			// Update the return object as well
+			user.OIDCGroups = inputOIDCGroups
+			updatesNeeded = true
 		}
+
+		if updatesNeeded {
+			if err := DB.Save(&identity).Error; err != nil {
+				return err
+			}
+		} else {
+			// Still save identity to update LastLoginAt
+			if err := DB.Save(&identity).Error; err != nil {
+				return err
+			}
+		}
+
+		return DB.Save(user).Error
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	user.Enabled = existingUser.Enabled
 
-	user.ID = existingUser.ID
-	user.CreatedAt = existingUser.CreatedAt
-	user.SidebarPreference = existingUser.SidebarPreference
-	return DB.Save(user).Error
+	// Identity not found.
+	var existingUser User
+
+	// 1. Legacy Check: Check if user exists by Sub in User table (for backward compatibility)
+	// This handles migration for users who have signed up before UserIdentity table was added.
+	// Since Sub is now transient (gorm:"-"), we must query the DB directly, but we can't scan into User directly to get Sub.
+	// But finding the record is enough.
+	if err := DB.Table("users").Where("sub = ?", inputSub).First(&existingUser).Error; err == nil {
+		// Found legacy user
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	} else {
+		// 2. Check if user exists by username (Account Linking)
+		if err := DB.Where("username = ?", user.Username).First(&existingUser).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// User does not exist, create new user
+				now := time.Now()
+				user.LastLoginAt = &now
+				if err := DB.Create(user).Error; err != nil {
+					return err
+				}
+				existingUser = *user
+			} else {
+				return err
+			}
+		}
+	}
+
+	// If we found an existing user (via Sub or Username), we update details
+	if existingUser.ID != 0 {
+		now := time.Now()
+		existingUser.LastLoginAt = &now
+		if err := DB.Save(&existingUser).Error; err != nil {
+			return err
+		}
+		*user = existingUser
+	}
+
+	// Restore input values to user object (as *user = existingUser might have wiped them)
+	user.Sub = inputSub
+	user.OIDCGroups = inputOIDCGroups
+	user.Provider = inputProvider // Ensure provider is the current one (e.g. if logging in with new provider for existing user)
+
+	// Create new identity linked to the user
+	now := time.Now()
+	newIdentity := UserIdentity{
+		UserID:      existingUser.ID,
+		Provider:    inputProvider,
+		ProviderID:  inputSub,
+		OIDCGroups:  inputOIDCGroups,
+		LastLoginAt: &now,
+	}
+
+	return DB.Create(&newIdentity).Error
 }
 
 func GetUserByUsername(username string) (*User, error) {
@@ -109,7 +211,8 @@ func ListUsers(limit int, offset int, search string, sortBy string, sortOrder st
 	if limit <= 0 {
 		limit = 20
 	}
-	query := DB.Model(&User{}).Where("users.provider != ?", common.APIKeyProvider)
+	// Users are listed normally, PATs are a separate relationship
+	query := DB.Model(&User{})
 	if role != "" {
 		query = query.Joins(
 			"JOIN role_assignments ra ON ra.subject = users.username AND ra.subject_type = ?",
@@ -169,7 +272,7 @@ func LoginUser(u *User) error {
 
 // DeleteUserByID removes a user by ID
 func DeleteUserByID(id uint) error {
-	_ = DB.Where("operator_id = ?", id).Delete(&ResourceHistory{}).Error
+	_ = DB.Where("actor_id = ?", id).Delete(&AuditLog{}).Error
 	return DB.Delete(&User{}, id).Error
 }
 
@@ -214,36 +317,31 @@ func AddSuperUser(user *User) error {
 	return nil
 }
 
-func NewAPIKeyUser(name string) (*User, error) {
-	apiKey := utils.RandomString(32)
-	u := &User{
-		Username: name,
-		APIKey:   SecretString(apiKey),
-		Provider: common.APIKeyProvider,
+func NewPersonalAccessToken(userID uint, name string, expiresAt *time.Time) (string, *PersonalAccessToken, error) {
+	token := "cspat-" + utils.RandomString(32)
+	digest := utils.SHA256Hash(token)
+	pat := &PersonalAccessToken{
+		UserID:      userID,
+		Name:        name,
+		TokenDigest: digest,
+		Prefix:      token[:10], // cspat- plus first 4 chars
+		ExpiresAt:   expiresAt,
 	}
-	return u, DB.Save(u).Error
+	if err := DB.Create(pat).Error; err != nil {
+		return "", nil, err
+	}
+	return token, pat, nil
 }
 
-func ListAPIKeyUsers() (users []User, err error) {
-	err = DB.Order("id desc").Where("provider = ?", common.APIKeyProvider).Find(&users).Error
-	return users, err
+func ListPersonalAccessTokens(userID uint) (tokens []PersonalAccessToken, err error) {
+	query := DB.Order("id desc").Preload("User")
+	if userID != 0 {
+		query = query.Where("user_id = ?", userID)
+	}
+	err = query.Find(&tokens).Error
+	return tokens, err
 }
 
-var (
-	AnonymousUser = User{
-		Model: Model{
-			ID: 0,
-		},
-		Username: "anonymous",
-		Provider: "Anonymous",
-		Roles: []common.Role{
-			{
-				Name:       "admin",
-				Clusters:   []string{"*"},
-				Resources:  []string{"*"},
-				Namespaces: []string{"*"},
-				Verbs:      []string{"*"},
-			},
-		},
-	}
-)
+func DeletePersonalAccessToken(id uint, userID uint) error {
+	return DB.Where("id = ? AND user_id = ?", id, userID).Delete(&PersonalAccessToken{}).Error
+}

@@ -18,13 +18,15 @@ import { Label } from '@/components/ui/label'
 interface DeleteConfirmationDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  resourceName: string
-  resourceType: string
+  resourceName?: string
+  resourceType?: string
   onConfirm: (force?: boolean, wait?: boolean) => void
   isDeleting?: boolean
   namespace?: string
   additionalNote?: string
   showAdditionalOptions?: boolean
+  title?: string
+  description?: string
 }
 
 export function DeleteConfirmationDialog({
@@ -37,6 +39,8 @@ export function DeleteConfirmationDialog({
   namespace,
   additionalNote,
   showAdditionalOptions = false,
+  title,
+  description,
 }: DeleteConfirmationDialogProps) {
   const { t } = useTranslation()
   const [confirmationInput, setConfirmationInput] = useState('')
@@ -69,10 +73,10 @@ export function DeleteConfirmationDialog({
             </div>
             <div className="flex-1">
               <DialogTitle className="text-left">
-                {t('deleteConfirmation.title', { type: resourceType })}
+                {title || t('deleteConfirmation.title', { type: resourceType })}
               </DialogTitle>
               <DialogDescription className="text-left">
-                {t('deleteConfirmation.description')}
+                {description || t('deleteConfirmation.description')}
               </DialogDescription>
             </div>
           </div>

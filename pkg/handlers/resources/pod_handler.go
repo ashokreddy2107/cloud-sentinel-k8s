@@ -13,12 +13,12 @@ import (
 
 	semver "github.com/blang/semver/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/kube"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
 	"github.com/samber/lo"
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/kube"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -523,9 +523,11 @@ func (h *PodHandler) Watch(c *gin.Context) {
 
 	// Parse params
 	namespace := c.Param("namespace")
-	if namespace == "" {
-		namespace = "_all"
+	namespaces := []string{}
+	if namespace != "" && namespace != "_all" {
+		namespaces = strings.Split(namespace, ",")
 	}
+
 	reduce := c.DefaultQuery("reduce", "false") == "true"
 	labelSelector := c.Query("labelSelector")
 	fieldSelector := c.Query("fieldSelector")
@@ -538,9 +540,9 @@ func (h *PodHandler) Watch(c *gin.Context) {
 		listOpts.FieldSelector = fieldSelector
 	}
 
-	ns := namespace
-	if ns == "_all" {
-		ns = ""
+	ns := ""
+	if len(namespaces) == 1 {
+		ns = namespaces[0]
 	}
 	metricsMap, err := h.ListMetrics(c)
 	if err != nil {
@@ -559,6 +561,7 @@ func (h *PodHandler) Watch(c *gin.Context) {
 	defer ticker.Stop()
 
 	flusher, _ := c.Writer.(http.Flusher)
+	user := c.MustGet("user").(model.User)
 
 	for {
 		select {
@@ -568,6 +571,22 @@ func (h *PodHandler) Watch(c *gin.Context) {
 		case <-ticker.C:
 			metricsMap, _ = h.ListMetrics(c)
 			for _, metrics := range metricsMap {
+				if !rbac.CanAccessNamespace(user, cs.Name, metrics.Namespace) {
+					continue
+				}
+				if len(namespaces) > 1 {
+					found := false
+					for _, targetNs := range namespaces {
+						if metrics.Namespace == targetNs {
+							found = true
+							break
+						}
+					}
+					if !found {
+						continue
+					}
+				}
+
 				pod, err := h.GetResource(c, metrics.Namespace, metrics.Name)
 				if err != nil {
 					klog.Warningf("Failed to get pod: %v", err)
@@ -588,6 +607,23 @@ func (h *PodHandler) Watch(c *gin.Context) {
 			pod, ok := event.Object.(*corev1.Pod)
 			if !ok || pod == nil {
 				continue
+			}
+
+			if !rbac.CanAccessNamespace(user, cs.Name, pod.Namespace) {
+				continue
+			}
+
+			if len(namespaces) > 1 {
+				found := false
+				for _, targetNs := range namespaces {
+					if pod.Namespace == targetNs {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
 			}
 
 			obj := &PodWithMetrics{Pod: pod}

@@ -22,6 +22,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { useCluster } from '@/hooks/use-cluster'
 
 import { ClusterSelector } from './cluster-selector'
 import { Collapsible, CollapsibleTrigger } from './ui/collapsible'
@@ -33,6 +34,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isMobile, setOpenMobile } = useSidebar()
   const { config, isLoading, getIconComponent } = useSidebarConfig()
   const { data: versionInfo } = useVersionInfo()
+  const { currentCluster } = useCluster()
 
   const pinnedItems = useMemo(() => {
     if (!config) return []
@@ -57,14 +59,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       .filter((group) => group.items.length > 0)
   }, [config])
 
+  const getClusterUrl = (url: string) => {
+    if (!currentCluster) return url
+    if (url.startsWith('/settings')) return url
+    // If it's root, go to dashboard
+    if (url === '/') return `/c/${currentCluster}/dashboard`
+    // If already prefixed (shouldn't happen with default config but safe to check)
+    if (url.startsWith('/c/')) return url
+
+    return `/c/${currentCluster}${url}`
+  }
+
   const isActive = (url: string) => {
-    if (url === '/') {
-      return location.pathname === '/'
+    const targetUrl = getClusterUrl(url)
+    if (targetUrl === `/c/${currentCluster}/dashboard` || url === '/') {
+      return location.pathname === targetUrl || location.pathname === `/c/${currentCluster}`
     }
+    // Handle CRDs parent route highlighting if needed, logic might vary
     if (url === '/crds') {
-      return location.pathname == '/crds'
+      return location.pathname === `/c/${currentCluster}/crds`
     }
-    return location.pathname.startsWith(url)
+    return location.pathname.startsWith(targetUrl)
   }
 
   // Handle menu item click on mobile - close sidebar
@@ -74,6 +89,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }
 
+  const homeUrl = currentCluster ? `/c/${currentCluster}/dashboard` : '/'
+
   if (isLoading || !config) {
     return (
       <Sidebar collapsible="offcanvas" {...props}>
@@ -81,9 +98,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <Link to="/" onClick={handleMenuItemClick}>
-                  <img src={Icon} alt="Kite Logo" className="ml-1 h-8 w-8" />
-                  <span className="text-base font-semibold">Kite</span>
+                <Link to={homeUrl} onClick={handleMenuItemClick}>
+                  <img src={Icon} alt="Cloud Sentinel K8s Logo" className="ml-1 h-8 w-8" />
+                  <span className="text-base font-semibold">Cloud Sentinel K8s</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -107,13 +124,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5 hover:bg-accent/50 transition-colors"
             >
-              <Link to="/" onClick={handleMenuItemClick}>
+              <Link to={homeUrl} onClick={handleMenuItemClick}>
                 <div className="relative flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
-                    <img src={Icon} alt="Kite Logo" className="h-8 w-8" />
+                    <img src={Icon} alt="Cloud Sentinel K8s Logo" className="h-8 w-8" />
                     <div className="flex flex-col">
                       <span className="text-base font-semibold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                        Kite
+                        Cloud Sentinel
                       </span>
                       <VersionInfo />
                     </div>
@@ -130,8 +147,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       }}
                       className="absolute right-0 top-0 mr-1 mt-1 rounded-sm bg-red-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-red-500 hover:bg-red-500/20"
                       title={t(
-                        'A newer Kite version is available',
-                        'A newer Kite version is available'
+                        'A newer Cloud Sentinel K8s version is available',
+                        'A newer Cloud Sentinel K8s version is available'
                       )}
                     >
                       New
@@ -154,7 +171,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 isActive={isActive('/')}
                 className="transition-all duration-200 hover:bg-accent/60 active:scale-95 data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:shadow-sm"
               >
-                <Link to="/" onClick={handleMenuItemClick}>
+                <Link to={getClusterUrl('/')} onClick={handleMenuItemClick}>
                   <IconLayoutDashboard className="text-sidebar-primary" />
                   <span className="font-medium">{t('nav.overview')}</span>
                 </Link>
@@ -182,7 +199,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         asChild
                         isActive={isActive(item.url)}
                       >
-                        <Link to={item.url} onClick={handleMenuItemClick}>
+                        <Link to={getClusterUrl(item.url)} onClick={handleMenuItemClick}>
                           <IconComponent className="text-sidebar-primary" />
                           <span>{title}</span>
                         </Link>
@@ -227,7 +244,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             asChild
                             isActive={isActive(item.url)}
                           >
-                            <Link to={item.url} onClick={handleMenuItemClick}>
+                            <Link to={getClusterUrl(item.url)} onClick={handleMenuItemClick}>
                               <IconComponent className="text-sidebar-primary" />
                               <span>{title}</span>
                             </Link>

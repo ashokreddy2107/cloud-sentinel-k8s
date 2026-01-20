@@ -2,6 +2,8 @@ package resources
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"reflect"
@@ -11,11 +13,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/kube"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/analyzer"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/kube"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -79,20 +82,39 @@ func (h *GenericResourceHandler[T, V]) recordHistory(c *gin.Context, opType stri
 	cs := c.MustGet("cluster").(*cluster.ClientSet)
 	user := c.MustGet("user").(model.User)
 
-	history := model.ResourceHistory{
-		ClusterName:   cs.Name,
-		ResourceType:  h.name,
-		ResourceName:  curr.GetName(),
-		Namespace:     curr.GetNamespace(),
-		OperationType: opType,
-		ResourceYAML:  h.ToYAML(curr),
-		PreviousYAML:  h.ToYAML(prev),
-		Success:       success,
-		ErrorMessage:  errMsg,
-		OperatorID:    user.ID,
+	var name, namespace string
+	// Safely get name and namespace from either prev or curr
+	if !reflect.ValueOf(curr).IsNil() {
+		name = curr.GetName()
+		namespace = curr.GetNamespace()
+	} else if !reflect.ValueOf(prev).IsNil() {
+		name = prev.GetName()
+		namespace = prev.GetNamespace()
 	}
-	if err := model.DB.Create(&history).Error; err != nil {
-		klog.Errorf("Failed to create resource history: %v", err)
+
+	payloadData := map[string]interface{}{
+		"clusterName":  cs.Name,
+		"resourceType": h.name,
+		"resourceName": name,
+		"namespace":    namespace,
+		"resourceYaml": h.ToYAML(curr),
+		"previousYaml": h.ToYAML(prev),
+	}
+	payloadBytes, _ := json.Marshal(payloadData)
+
+	auditLog := model.AuditLog{
+		AppID:        model.CurrentApp.ID,
+		Action:       opType,
+		ActorID:      user.ID,
+		Payload:      string(payloadBytes),
+		Success:      success,
+		ErrorMessage: errMsg,
+		IPAddress:    c.ClientIP(),
+		UserAgent:    c.Request.UserAgent(),
+	}
+
+	if err := model.DB.Create(&auditLog).Error; err != nil {
+		klog.Errorf("Failed to create audit log: %v", err)
 	}
 }
 
@@ -147,6 +169,24 @@ func (h *GenericResourceHandler[T, V]) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, object)
 }
 
+func (h *GenericResourceHandler[T, V]) GetAnalysis(c *gin.Context) {
+	object, err := h.GetResource(c, c.Param("namespace"), c.Param("name"))
+	if err != nil {
+		if errors.IsNotFound(err) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	obj := object.(client.Object)
+	cs := c.MustGet("cluster").(*cluster.ClientSet)
+	analysis := analyzer.Analyze(c.Request.Context(), cs.K8sClient, obj)
+
+	c.JSON(http.StatusOK, analysis)
+}
+
 func (h *GenericResourceHandler[T, V]) list(c *gin.Context) (V, error) {
 	var zero V
 	cs := c.MustGet("cluster").(*cluster.ClientSet)
@@ -156,9 +196,14 @@ func (h *GenericResourceHandler[T, V]) list(c *gin.Context) (V, error) {
 
 	var listOpts []client.ListOption
 	namespace := c.Param("namespace")
+	namespaces := []string{}
+	if namespace != "" && namespace != "_all" {
+		namespaces = strings.Split(namespace, ",")
+	}
+
 	if !h.isClusterScoped {
-		if namespace != "" && namespace != "_all" {
-			listOpts = append(listOpts, client.InNamespace(namespace))
+		if len(namespaces) == 1 {
+			listOpts = append(listOpts, client.InNamespace(namespaces[0]))
 		}
 	}
 	if c.Query("limit") != "" {
@@ -247,8 +292,23 @@ func (h *GenericResourceHandler[T, V]) list(c *gin.Context) (V, error) {
 		if h.Name() == "namespaces" && !rbac.CanAccessNamespace(user, cs.Name, obj.GetName()) {
 			continue
 		}
-		if namespace == "_all" && obj.GetNamespace() != "" && !rbac.CanAccessNamespace(user, cs.Name, obj.GetNamespace()) {
-			continue
+		if !h.isClusterScoped {
+			if len(namespaces) > 1 {
+				found := false
+				for _, ns := range namespaces {
+					if obj.GetNamespace() == ns {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+
+			if !rbac.CanAccessNamespace(user, cs.Name, obj.GetNamespace()) {
+				continue
+			}
 		}
 		filterItems = append(filterItems, items[i])
 	}
@@ -415,6 +475,13 @@ func (h *GenericResourceHandler[T, V]) Delete(c *gin.Context) {
 		return
 	}
 
+	var success bool
+	var errMsg string
+	var empty T
+	defer func() {
+		h.recordHistory(c, "delete", resource, empty, success, errMsg)
+	}()
+
 	cascadeDelete := c.Query("cascade") != "false"
 	forceDelete := c.Query("force") == "true"
 	wait := c.Query("wait") != "false"
@@ -434,6 +501,7 @@ func (h *GenericResourceHandler[T, V]) Delete(c *gin.Context) {
 		deleteOptions.GracePeriodSeconds = &gracePeriodSeconds
 	}
 	if err := cs.K8sClient.Delete(ctx, resource, deleteOptions); err != nil {
+		errMsg = err.Error()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -457,6 +525,7 @@ func (h *GenericResourceHandler[T, V]) Delete(c *gin.Context) {
 			return
 		}
 	}
+	success = true
 	c.JSON(http.StatusOK, gin.H{"message": "deleted successfully"})
 }
 
@@ -534,16 +603,65 @@ func (h *GenericResourceHandler[T, V]) ListHistory(c *gin.Context) {
 
 	// Get total count
 	var total int64
-	if err := model.DB.Model(&model.ResourceHistory{}).Where("cluster_name = ? AND resource_type = ? AND resource_name = ? AND namespace = ?", cs.Name, h.name, resourceName, namespace).Count(&total).Error; err != nil {
+	query := model.DB.Model(&model.AuditLog{}).
+		Where("action IN (?)", []string{"create", "update", "patch", "delete", "apply"}).
+		Where("payload LIKE ?", "%"+cs.Name+"%").
+		Where("payload LIKE ?", "%"+h.name+"%").
+		Where("payload LIKE ?", "%"+resourceName+"%")
+
+	if namespace != "" {
+		query = query.Where("payload LIKE ?", "%"+namespace+"%")
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Get paginated history
-	history := []model.ResourceHistory{}
-	if err := model.DB.Preload("Operator").Where("cluster_name = ? AND resource_type = ? AND resource_name = ? AND namespace = ?", cs.Name, h.name, resourceName, namespace).Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&history).Error; err != nil {
+	// Get paginated audit logs
+	logs := []model.AuditLog{}
+	if err := query.Preload("Actor").Order("created_at DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&logs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Map logs back to a format similar to ResourceHistory for frontend compatibility
+	history := make([]map[string]interface{}, 0, len(logs))
+	for _, l := range logs {
+		var p map[string]interface{}
+		_ = json.Unmarshal([]byte(l.Payload), &p)
+		if p == nil {
+			p = make(map[string]interface{})
+		}
+
+		// Check if it's actually for this specific resource (naive LIKE check above might match others)
+		if p["clusterName"] == cs.Name && p["resourceType"] == h.name && p["resourceName"] == resourceName {
+			if namespace != "" && p["namespace"] != namespace {
+				continue
+			}
+			actorName := fmt.Sprintf("%d", l.ActorID) // Fallback
+			if l.Actor != nil {
+				actorName = l.Actor.Username
+			}
+			history = append(history, map[string]interface{}{
+				"id":            l.ID,
+				"createdAt":     l.CreatedAt,
+				"updatedAt":     l.UpdatedAt,
+				"clusterName":   p["clusterName"],
+				"resourceType":  p["resourceType"],
+				"resourceName":  p["resourceName"],
+				"namespace":     p["namespace"],
+				"operationType": l.Action,
+				"resourceYaml":  p["resourceYaml"],
+				"previousYaml":  p["previousYaml"],
+				"success":       l.Success,
+				"errorMessage":  l.ErrorMessage,
+				"actor":         actorName,
+				"operator": map[string]interface{}{
+					"username": actorName,
+				},
+			})
+		}
 	}
 
 	// Calculate pagination info

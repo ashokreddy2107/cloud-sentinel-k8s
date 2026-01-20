@@ -12,10 +12,11 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { ResourceType } from '@/types/api'
-import { updateResource, useResource } from '@/lib/api'
+import { updateResource, useResource, useResourceAnalysis } from '@/lib/api'
 import { getOwnerInfo } from '@/lib/k8s'
 import { withSubPath } from '@/lib/subpath'
 import { formatDate, translateError } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -28,6 +29,7 @@ import { RelatedResourcesTable } from '@/components/related-resource-table'
 import { ResourceDeleteConfirmationDialog } from '@/components/resource-delete-confirmation-dialog'
 import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { ResourceAnomalies } from '@/components/anomaly-table'
 
 export function ServiceDetail(props: { name: string; namespace?: string }) {
   const { namespace, name } = props
@@ -45,6 +47,8 @@ export function ServiceDetail(props: { name: string; namespace?: string }) {
     error,
     refetch: handleRefresh,
   } = useResource('services', name, namespace)
+
+  const { data: analysis } = useResourceAnalysis('services', name, namespace)
 
   useEffect(() => {
     if (data) {
@@ -277,6 +281,29 @@ export function ServiceDetail(props: { name: string; namespace?: string }) {
                 name={name}
                 namespace={namespace}
                 currentResource={data}
+              />
+            ),
+          },
+          {
+            value: 'anomalies',
+            label: (
+              <>
+                Anomalies
+                {analysis?.anomalies && analysis.anomalies.length > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                  >
+                    {analysis.anomalies.length}
+                  </Badge>
+                )}
+              </>
+            ),
+            content: (
+              <ResourceAnomalies
+                resourceType="services"
+                name={name}
+                namespace={namespace}
               />
             ),
           },

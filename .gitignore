@@ -41,5 +41,5 @@ docs/.vitepress/dist
 docs/node_modules
 docs/.vitepress/cache
 
-kite
-!charts/kite
+cloud-sentinel-k8s
+!charts/cloud-sentinel-k8s

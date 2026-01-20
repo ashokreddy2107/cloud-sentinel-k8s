@@ -1,28 +1,27 @@
 # Chart Values
 
-This document describes all available configuration options for the Kite Helm Chart.
+This document describes all available configuration options for the Cloud Sentinel K8s Helm Chart.
 
 ## Basic Configuration
 
 | Parameter          | Description                                                | Default               |
 | ------------------ | ---------------------------------------------------------- | --------------------- |
 | `replicaCount`     | Number of replicas                                         | `1`                   |
-| `image.repository` | Container image repository                                 | `ghcr.io/zxh326/kite` |
+| `image.repository` | Container image repository                                 | `ghcr.io/pixelvide/cloud-sentinel-k8s` |
 | `image.pullPolicy` | Image pull policy                                          | `IfNotPresent`        |
 | `image.tag`        | Image tag. If set, will override the chart's `appVersion`. | `""`                  |
 | `imagePullSecrets` | Image pull secrets for private repositories                | `[]`                  |
 | `nameOverride`     | Override chart name                                        | `""`                  |
 | `fullnameOverride` | Override full name                                         | `""`                  |
 | `debug`            | Enable debug mode                                          | `false`               |
-| `basePath`         | Base path where Kite is served. See notes below. | `""`                 |
+| `basePath`         | Base path where Cloud Sentinel K8s is served. See notes below. | `""`                 |
 
 ## Authentication & Security
 
 | Parameter              | Description                                                                              | Default                                              |
 | ---------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `anonymousUserEnabled` | Enable anonymous user access with full admin privileges. Use with caution in production. | `false`                                              |
-| `jwtSecret`            | Secret key used for signing JWT tokens. Change this in production.                       | `"kite-default-jwt-secret-key-change-in-production"` |
-| `encryptKey`           | Secret key used for encrypting sensitive data. Change this in production.                | `"kite-default-encryption-key-change-in-production"` |
+| `jwtSecret`            | Secret key used for signing JWT tokens. Change this in production.                       | `"cloud-sentinel-k8s-default-jwt-secret-key-change-in-production"` |
+| `encryptKey`           | Secret key used for encrypting sensitive data. Change this in production.                | `"cloud-sentinel-k8s-default-encryption-key-change-in-production"` |
 | `host`                 | Hostname for the application                                                             | `""`                                                 |
 
 ## Database Configuration
@@ -45,7 +44,7 @@ This document describes all available configuration options for the Kite Helm Ch
 | `db.sqlite.persistence.hostPath.path`     | hostPath path                                             | `/path/to/host/dir` |
 | `db.sqlite.persistence.hostPath.type`     | hostPath type                                             | `DirectoryOrCreate` |
 | `db.sqlite.persistence.mountPath`         | Mount path inside container                               | `/data`             |
-| `db.sqlite.persistence.filename`          | SQLite filename inside mountPath                          | `kite.db`           |
+| `db.sqlite.persistence.filename`          | SQLite filename inside mountPath                          | `cloud-sentinel-k8s.db`           |
 
 ## Environment Variables
 
@@ -112,7 +111,7 @@ rbac:
 ```yaml
 ingress:
   hosts:
-    - host: kite.zzde.me
+    - host: cloud-sentinel-k8s.pixelvide.cloud
       paths:
         - path: /
           pathType: ImplementationSpecific

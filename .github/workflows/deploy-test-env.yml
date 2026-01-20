@@ -18,16 +18,16 @@ jobs:
   deploy:
     name: Deploy Test Env
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.repository_owner == 'zxh326' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.repository_owner == "pixelvide" }}
 
     steps:
-      - name: restart kite deployment
+      - name: restart cloud-sentinel-k8s deployment
         env:
-          KITE_HOST: ${{ secrets.KITE_TEST_HOST }}
-          KITE_AUTH: ${{ secrets.KITE_TEST_AUTH }}
+          CLOUD_SENTINEL_K8S_HOST: ${{ secrets.CLOUD_SENTINEL_K8S_TEST_HOST }}
+          CLOUD_SENTINEL_K8S_AUTH: ${{ secrets.CLOUD_SENTINEL_K8S_TEST_AUTH }}
         run: |
           RESTART_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          curl -X PATCH "$KITE_HOST/api/v1/deployments/kite/kite" \
-            -H "Authorization: $KITE_AUTH" \
+          curl -X PATCH "$CLOUD_SENTINEL_K8S_HOST/api/v1/deployments/cloud-sentinel-k8s/cloud-sentinel-k8s" \
+            -H "Authorization: $CLOUD_SENTINEL_K8S_AUTH" \
             -H "Content-Type: application/json" \
-            -d "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kite.kubernetes.io/restartedAt\":\"$RESTART_TIME\"}}}}}"
+            -d "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"cloud-sentinel-k8s.kubernetes.io/restartedAt\":\"$RESTART_TIME\"}}}}}"

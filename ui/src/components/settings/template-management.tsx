@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   IconEdit,
+  IconEye,
   IconPlus,
   IconTemplate,
   IconTrash,
@@ -18,6 +19,7 @@ import {
   useTemplates,
 } from '@/lib/api'
 import { translateError } from '@/lib/utils'
+import { useAuth } from '@/contexts/auth-context'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -37,11 +39,14 @@ import { Action, ActionTable } from '../action-table'
 
 export function TemplateManagement() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const { data: templates = [], isLoading } = useTemplates()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const isAdmin = user?.isAdmin()
   const [editingTemplate, setEditingTemplate] =
     useState<ResourceTemplate | null>(null)
+  const [isViewOnly, setIsViewOnly] = useState(false)
   const [deletingTemplate, setDeletingTemplate] =
     useState<ResourceTemplate | null>(null)
 
@@ -111,7 +116,8 @@ export function TemplateManagement() {
     },
   })
 
-  const handleOpenDialog = (template?: ResourceTemplate) => {
+  const handleOpenDialog = (template?: ResourceTemplate, viewOnly: boolean = false) => {
+    setIsViewOnly(viewOnly)
     if (template) {
       setEditingTemplate(template)
       setFormData({
@@ -175,27 +181,43 @@ export function TemplateManagement() {
   )
 
   const actions = useMemo<Action<ResourceTemplate>[]>(() => {
-    return [
+    const baseActions: Action<ResourceTemplate>[] = [
       {
         label: (
           <>
-            <IconEdit className="h-4 w-4" />
-            {t('common.edit', 'Edit')}
+            <IconEye className="h-4 w-4" />
+            {t('common.view', 'View')}
           </>
         ),
-        onClick: (item) => handleOpenDialog(item),
-      },
-      {
-        label: (
-          <div className="inline-flex items-center gap-2 text-destructive">
-            <IconTrash className="h-4 w-4" />
-            {t('common.delete', 'Delete')}
-          </div>
-        ),
-        onClick: (item) => setDeletingTemplate(item),
+        onClick: (item) => handleOpenDialog(item, true),
       },
     ]
-  }, [t])
+
+    if (isAdmin) {
+      baseActions.push(
+        {
+          label: (
+            <>
+              <IconEdit className="h-4 w-4" />
+              {t('common.edit', 'Edit')}
+            </>
+          ),
+          onClick: (item) => handleOpenDialog(item, false),
+        },
+        {
+          label: (
+            <div className="inline-flex items-center gap-2 text-destructive">
+              <IconTrash className="h-4 w-4" />
+              {t('common.delete', 'Delete')}
+            </div>
+          ),
+          onClick: (item) => setDeletingTemplate(item),
+        }
+      )
+    }
+
+    return baseActions
+  }, [t, isAdmin])
 
   if (isLoading && templates.length === 0) {
     return (
@@ -224,10 +246,12 @@ export function TemplateManagement() {
                 )}
               </p>
             </div>
-            <Button onClick={() => handleOpenDialog()} className="gap-2">
-              <IconPlus className="h-4 w-4" />
-              {t('templateManagement.actions.add', 'Add Template')}
-            </Button>
+            {isAdmin && (
+              <Button onClick={() => handleOpenDialog()} className="gap-2">
+                <IconPlus className="h-4 w-4" />
+                {t('templateManagement.actions.add', 'Add Template')}
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -250,17 +274,21 @@ export function TemplateManagement() {
         <DialogContent className="max-w-4xl! max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>
-              {editingTemplate
-                ? t('templateManagement.dialog.editTitle', 'Edit Template')
-                : t('templateManagement.dialog.createTitle', 'Create Template')}
+              {isViewOnly
+                ? t('templateManagement.dialog.viewTitle', 'View Template')
+                : editingTemplate
+                  ? t('templateManagement.dialog.editTitle', 'Edit Template')
+                  : t('templateManagement.dialog.createTitle', 'Create Template')}
             </DialogTitle>
             <DialogDescription>
-              {editingTemplate
-                ? t(
+              {isViewOnly
+                ? t('templateManagement.dialog.viewDescription', 'Template details (Read-only)')
+                : editingTemplate
+                  ? t(
                     'templateManagement.dialog.updateDescription',
                     'Update existing template'
                   )
-                : t(
+                  : t(
                     'templateManagement.dialog.createDescription',
                     'Add a new resource template'
                   )}
@@ -298,6 +326,7 @@ export function TemplateManagement() {
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
                 }
+                disabled={isViewOnly}
                 placeholder="e.g., A basic Pod with a single container"
               />
             </div>
@@ -308,6 +337,7 @@ export function TemplateManagement() {
                 onChange={(value) =>
                   setFormData({ ...formData, yaml: value || '' })
                 }
+                disabled={isViewOnly}
                 height="400px"
               />
             </div>
@@ -315,9 +345,11 @@ export function TemplateManagement() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              {t('common.cancel', 'Cancel')}
+              {isViewOnly ? t('common.close', 'Close') : t('common.cancel', 'Cancel')}
             </Button>
-            <Button onClick={handleSubmit}>{t('common.save', 'Save')}</Button>
+            {!isViewOnly && (
+              <Button onClick={handleSubmit}>{t('common.save', 'Save')}</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

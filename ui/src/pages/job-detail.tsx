@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 
-import { updateResource, useResource, useResources } from '@/lib/api'
+import { updateResource, useResource, useResourceAnalysis, useResources } from '@/lib/api'
 import { getOwnerInfo } from '@/lib/k8s'
 import { formatDate, translateError } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +29,7 @@ import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { Terminal } from '@/components/terminal'
 import { VolumeTable } from '@/components/volume-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { ResourceAnomalies } from '@/components/anomaly-table'
 
 interface JobStatusBadge {
   label: string
@@ -91,6 +92,8 @@ export function JobDetail(props: { namespace: string; name: string }) {
     error: jobError,
     refetch: refetchJob,
   } = useResource('jobs', name, namespace)
+
+  const { data: analysis } = useResourceAnalysis('jobs', name, namespace)
 
   const { data: pods, refetch: refetchPods } = useResources('pods', namespace, {
     labelSelector: `job-name=${name}`,
@@ -377,46 +380,46 @@ export function JobDetail(props: { namespace: string; name: string }) {
           },
           ...(pods && pods.length > 0
             ? [
-                {
-                  value: 'pods',
-                  label: (
-                    <>
-                      Pods{' '}
-                      {pods && <Badge variant="secondary">{pods.length}</Badge>}
-                    </>
-                  ),
-                  content: <PodTable pods={pods} />,
-                },
-                {
-                  value: 'logs',
-                  label: 'Logs',
-                  content: (
-                    <div className="space-y-6">
-                      <LogViewer
-                        namespace={namespace}
-                        pods={pods}
-                        containers={job.spec?.template.spec?.containers}
-                        initContainers={job.spec?.template.spec?.initContainers}
-                        labelSelector={`job-name=${name}`}
-                      />
-                    </div>
-                  ),
-                },
-                {
-                  value: 'terminal',
-                  label: 'Terminal',
-                  content: (
-                    <div className="space-y-6">
-                      <Terminal
-                        namespace={namespace}
-                        pods={pods}
-                        containers={job.spec?.template.spec?.containers}
-                        initContainers={job.spec?.template.spec?.initContainers}
-                      />
-                    </div>
-                  ),
-                },
-              ]
+              {
+                value: 'pods',
+                label: (
+                  <>
+                    Pods{' '}
+                    {pods && <Badge variant="secondary">{pods.length}</Badge>}
+                  </>
+                ),
+                content: <PodTable pods={pods} />,
+              },
+              {
+                value: 'logs',
+                label: 'Logs',
+                content: (
+                  <div className="space-y-6">
+                    <LogViewer
+                      namespace={namespace}
+                      pods={pods}
+                      containers={job.spec?.template.spec?.containers}
+                      initContainers={job.spec?.template.spec?.initContainers}
+                      labelSelector={`job-name=${name}`}
+                    />
+                  </div>
+                ),
+              },
+              {
+                value: 'terminal',
+                label: 'Terminal',
+                content: (
+                  <div className="space-y-6">
+                    <Terminal
+                      namespace={namespace}
+                      pods={pods}
+                      containers={job.spec?.template.spec?.containers}
+                      initContainers={job.spec?.template.spec?.initContainers}
+                    />
+                  </div>
+                ),
+              },
+            ]
             : []),
           {
             value: 'related',
@@ -450,18 +453,23 @@ export function JobDetail(props: { namespace: string; name: string }) {
           },
           ...(volumes
             ? [
-                {
-                  value: 'volumes',
-                  label: 'Volumes',
-                  content: (
-                    <VolumeTable
-                      namespace={namespace}
-                      volumes={volumes}
-                      containers={containers}
-                    />
-                  ),
-                } as const,
-              ]
+              {
+                value: 'volumes',
+                label: (
+                  <>
+                    Volumes{' '}
+                    {volumes && <Badge variant="secondary">{volumes.length}</Badge>}
+                  </>
+                ),
+                content: (
+                  <VolumeTable
+                    namespace={namespace}
+                    volumes={volumes}
+                    containers={containers}
+                  />
+                ),
+              } as const,
+            ]
             : []),
           {
             value: 'monitor',
@@ -473,6 +481,26 @@ export function JobDetail(props: { namespace: string; name: string }) {
                 containers={job.spec?.template.spec?.containers}
                 initContainers={job.spec?.template.spec?.initContainers}
                 labelSelector={`job-name=${name}`}
+              />
+            ),
+          },
+          {
+            value: 'anomalies',
+            label: (
+              <>
+                Anomalies
+                {analysis?.anomalies && analysis.anomalies.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                    {analysis.anomalies.length}
+                  </Badge>
+                )}
+              </>
+            ),
+            content: (
+              <ResourceAnomalies
+                resourceType="jobs"
+                name={name}
+                namespace={namespace}
               />
             ),
           },

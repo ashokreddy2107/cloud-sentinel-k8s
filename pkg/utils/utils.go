@@ -2,20 +2,16 @@ package utils
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/rand"
 )
 
-func InjectAnalytics(htmlContent string) string {
-	analyticsScript := `<script defer src="https://cloud.umami.is/script.js" data-website-id="c3d8a914-abbc-4eed-9699-a9192c4bef9e" data-exclude-search="true" data-exclude-hash="true" data-do-not-track="true"></script>`
-
-	re := regexp.MustCompile(`</head>`)
-	return re.ReplaceAllString(htmlContent, "  "+analyticsScript+"\n  </head>")
-}
-
-func InjectKiteBase(htmlContent string, base string) string {
+func InjectCloudSentinelK8sBase(htmlContent string, base string) string {
 	baseScript := fmt.Sprintf(`<script>window.__dynamic_base__='%s';</script>`, base)
 	re := regexp.MustCompile(`<head>`)
 	return re.ReplaceAllString(htmlContent, "<head>\n    "+baseScript)
@@ -47,4 +43,56 @@ func GetImageRegistryAndRepo(image string) (string, string) {
 		return "", strings.Join(parts, "/")
 	}
 	return "", image
+}
+
+// GetUserGlabConfigDir returns the directory path for a user's glab configuration.
+// It ensures the directory exists and has 0777 permissions.
+func GetUserGlabConfigDir(storageNamespace string) (string, error) {
+	path := filepath.Join("/data", storageNamespace, ".config", "glab-cli")
+	if err := os.MkdirAll(path, 0777); err != nil {
+		return "", fmt.Errorf("failed to create glab config directory: %w", err)
+	}
+	// Explicitly chmod to ensure permissions are correct regardless of umask
+	if err := os.Chmod(path, 0777); err != nil {
+		return "", fmt.Errorf("failed to chmod glab config directory: %w", err)
+	}
+	return path, nil
+}
+
+func GlabAuthLogin(host, token, configDir string) error {
+	loginCmd := exec.Command("glab", "auth", "login", "--hostname", host, "--token", token)
+	loginCmd.Env = append(os.Environ(), "GLAB_CONFIG_DIR="+configDir)
+	if output, err := loginCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("login failed for %s: %s", host, string(output))
+	}
+	return nil
+}
+
+// GetUserAWSCredentialsPath returns the path to the user's AWS credentials file.
+func GetUserAWSCredentialsPath(storageNamespace string) string {
+	return filepath.Join("/data", storageNamespace, ".config", "aws", "credentials")
+}
+
+// WriteUserAWSCredentials writes the AWS credentials content to the user's specific path.
+func WriteUserAWSCredentials(storageNamespace string, content string) error {
+	path := GetUserAWSCredentialsPath(storageNamespace)
+	dir := filepath.Dir(path)
+
+	if err := os.MkdirAll(dir, 0777); err != nil {
+		return fmt.Errorf("failed to create aws config directory: %w", err)
+	}
+	// Explicitly chmod to ensure permissions are correct regardless of umask
+	if err := os.Chmod(dir, 0777); err != nil {
+		return fmt.Errorf("failed to chmod aws config directory: %w", err)
+	}
+
+	if err := os.WriteFile(path, []byte(content), 0666); err != nil {
+		return fmt.Errorf("failed to write aws credentials file: %w", err)
+	}
+
+	if err := os.Chmod(path, 0666); err != nil {
+		return fmt.Errorf("failed to chmod aws credentials file: %w", err)
+	}
+
+	return nil
 }

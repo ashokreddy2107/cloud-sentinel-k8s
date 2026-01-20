@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
@@ -40,6 +40,7 @@ type resourceHandler interface {
 	ListHistory(c *gin.Context)
 
 	Describe(c *gin.Context)
+	GetAnalysis(c *gin.Context)
 }
 
 type Restartable interface {
@@ -137,6 +138,7 @@ func registerClusterScopeRoutes(group *gin.RouterGroup, handler resourceHandler)
 	group.PATCH("/_all/:name", handler.Patch)
 	group.GET("/_all/:name/history", handler.ListHistory)
 	group.GET("/_all/:name/describe", handler.Describe)
+	group.GET("/_all/:name/analysis", handler.GetAnalysis)
 }
 
 func registerNamespaceScopeRoutes(group *gin.RouterGroup, handler resourceHandler) {
@@ -149,6 +151,7 @@ func registerNamespaceScopeRoutes(group *gin.RouterGroup, handler resourceHandle
 	group.PATCH("/:namespace/:name", handler.Patch)
 	group.GET("/:namespace/:name/history", handler.ListHistory)
 	group.GET("/:namespace/:name/describe", handler.Describe)
+	group.GET("/:namespace/:name/analysis", handler.GetAnalysis)
 }
 
 var SearchFuncs = map[string]func(c *gin.Context, query string, limit int64) ([]common.SearchResult, error){}

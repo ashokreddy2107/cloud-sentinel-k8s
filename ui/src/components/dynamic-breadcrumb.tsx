@@ -56,28 +56,61 @@ export function DynamicBreadcrumb() {
       href,
     })
 
-    // Helper function to get safe link for segments
-    const getSafeLink = (index: number): string | undefined => {
-      const isLastSegment = index === pathSegments.length - 1
-      if (isLastSegment) return undefined
+    // Check if we are in cluster context
+    const isClusterContext = pathSegments[0] === 'c'
 
-      // Handle different path patterns
-      if (pathSegments[0] === 'crds') {
-        if (index === 0) return '/crds'
-        if (index === 1) return `/crds/${pathSegments[1]}`
-        if (index === 2) return `/crds/${pathSegments[1]}` // namespace links back to CRD list
-        return undefined
-      } else {
-        // Regular resources: namespace should link back to resource list
-        const isNamespace = pathSegments.length === 3 && index === 1
-        if (isNamespace) return `/${pathSegments[0]}`
-        return `/${pathSegments.slice(0, index + 1).join('/')}`
-      }
-    }
-
-    // Generate breadcrumbs for each path segment
     pathSegments.forEach((segment, index) => {
-      const href = getSafeLink(index)
+      // Skip 'c' segment
+      if (isClusterContext && index === 0) return
+
+      // Handle Cluster Name segment
+      if (isClusterContext && index === 1) {
+        breadcrumbs.push(createBreadcrumb(segment, `/c/${segment}/dashboard`))
+        return
+      }
+
+      const isLastSegment = index === pathSegments.length - 1
+      if (isLastSegment) {
+        breadcrumbs.push(createBreadcrumb(segment, undefined))
+        return
+      }
+
+      let href: string | undefined = `/${pathSegments.slice(0, index + 1).join('/')}`
+
+      // Special handling for nested routes
+      if (isClusterContext) {
+        const relativeIndex = index - 2 // 0 for 'pods', 1 for 'namespace', etc.
+        const relativeSegments = pathSegments.slice(2)
+
+        if (relativeSegments[0] === 'crds') {
+          if (relativeIndex === 0) href = `/c/${pathSegments[1]}/crds`
+          else if (relativeIndex === 1)
+            href = `/c/${pathSegments[1]}/crds/${pathSegments[3]}`
+          else if (relativeIndex === 2)
+            href = `/c/${pathSegments[1]}/crds/${pathSegments[3]}`
+          else href = undefined
+        } else {
+          // Regular resources
+          // index 2 is resource (pods), index 3 is namespace
+          // (index 4 is resourceName [not linked], checked by isLastSegment above)
+          const isNamespace = pathSegments.length === 5 && index === 3
+          if (isNamespace) {
+            href = `/${pathSegments.slice(0, 3).join('/')}`
+          }
+        }
+      } else {
+        // Legacy/Global logic (if any)
+        if (pathSegments[0] === 'crds') {
+          if (index === 0) href = '/crds'
+          else if (index === 1) href = `/crds/${pathSegments[1]}`
+          else if (index === 2) href = `/crds/${pathSegments[1]}`
+          else href = undefined
+        } else {
+          const isNamespace = pathSegments.length === 3 && index === 1
+          if (isNamespace) href = `/${pathSegments[0]}`
+        }
+      }
+
       breadcrumbs.push(createBreadcrumb(segment, href))
     })
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { usePageTitle } from '@/hooks/use-page-title'
@@ -9,11 +10,77 @@ import { OAuthProviderManagement } from '@/components/settings/oauth-provider-ma
 import { RBACManagement } from '@/components/settings/rbac-management'
 import { TemplateManagement } from '@/components/settings/template-management'
 import { UserManagement } from '@/components/settings/user-management'
+import { GitlabConfigManagement } from '@/components/settings/gitlab-config-management'
+import { AWSConfigManagement } from '@/components/settings/aws-config-management'
+import { useAuth } from '@/contexts/auth-context'
 
 export function SettingsPage() {
   const { t } = useTranslation()
 
+  const { user } = useAuth()
+
   usePageTitle('Settings')
+
+  const tabs = useMemo(() => {
+    const allTabs = [
+      {
+        value: 'clusters',
+        label: t('settings.tabs.clusters', 'Cluster'),
+        content: <ClusterManagement />,
+        adminOnly: true,
+      },
+      {
+        value: 'oauth',
+        label: t('settings.tabs.oauth', 'OAuth'),
+        content: <OAuthProviderManagement />,
+        adminOnly: true,
+      },
+      {
+        value: 'rbac',
+        label: t('settings.tabs.rbac', 'RBAC'),
+        content: <RBACManagement />,
+        adminOnly: true,
+      },
+      {
+        value: 'users',
+        label: t('settings.tabs.users', 'User'),
+        content: <UserManagement />,
+        adminOnly: true,
+      },
+      {
+        value: 'gitlab',
+        label: t('settings.tabs.gitlab', 'GitLab'),
+        content: <GitlabConfigManagement />,
+        adminOnly: false,
+      },
+      {
+        value: 'aws',
+        label: t('settings.tabs.aws', 'AWS'),
+        content: <AWSConfigManagement />,
+        adminOnly: false,
+      },
+      {
+        value: 'apikeys',
+        label: t('settings.tabs.apikeys', 'API Keys'),
+        content: <APIKeyManagement />,
+        adminOnly: false,
+      },
+      {
+        value: 'templates',
+        label: t('settings.tabs.templates', 'Templates'),
+        content: <TemplateManagement />,
+        adminOnly: false,
+      },
+      {
+        value: 'audit',
+        label: t('settings.tabs.audit', 'Audit'),
+        content: <AuditLog />,
+        adminOnly: true,
+      },
+    ]
+
+    return allTabs.filter((tab) => !tab.adminOnly || user?.isAdmin())
+  }, [t, user])
 
   return (
     <div className="space-y-2">
@@ -26,45 +93,7 @@ export function SettingsPage() {
         </p>
       </div>
 
-      <ResponsiveTabs
-        tabs={[
-          {
-            value: 'clusters',
-            label: t('settings.tabs.clusters', 'Cluster'),
-            content: <ClusterManagement />,
-          },
-          {
-            value: 'oauth',
-            label: t('settings.tabs.oauth', 'OAuth'),
-            content: <OAuthProviderManagement />,
-          },
-          {
-            value: 'rbac',
-            label: t('settings.tabs.rbac', 'RBAC'),
-            content: <RBACManagement />,
-          },
-          {
-            value: 'users',
-            label: t('settings.tabs.users', 'User'),
-            content: <UserManagement />,
-          },
-          {
-            value: 'apikeys',
-            label: t('settings.tabs.apikeys', 'API Keys'),
-            content: <APIKeyManagement />,
-          },
-          {
-            value: 'templates',
-            label: t('settings.tabs.templates', 'Templates'),
-            content: <TemplateManagement />,
-          },
-          {
-            value: 'audit',
-            label: t('settings.tabs.audit', 'Audit'),
-            content: <AuditLog />,
-          },
-        ]}
-      />
+      <ResponsiveTabs tabs={tabs} />
     </div>
   )
 }

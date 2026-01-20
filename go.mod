@@ -1,4 +1,4 @@
-module github.com/zxh326/kite
+module github.com/pixelvide/cloud-sentinel-k8s
 
 go 1.25.0
 

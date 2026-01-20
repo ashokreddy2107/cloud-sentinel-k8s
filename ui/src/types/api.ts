@@ -339,6 +339,7 @@ export interface Cluster {
   updatedAt: string
   prometheusURL?: string
   error?: string
+  skip_system_sync?: boolean
 }
 
 export interface OAuthProvider {
@@ -398,15 +399,22 @@ export interface FetchUserListResponse {
   size: number
 }
 
-export interface APIKey {
+export interface PersonalAccessToken {
   id: number
-  username: string
-  apiKey: string
-  lastLoginAt?: string
+  userId: number
+  name: string
+  prefix: string
+  expiresAt?: string
+  lastUsedAt?: string
+  lastUsedIP?: string
   createdAt: string
   updatedAt: string
   roles?: Role[]
+  user?: UserItem
 }
+
+// Alias for backward compatibility during migration
+export type APIKey = PersonalAccessToken
 
 // Resource History types
 export interface ResourceHistory {
@@ -447,9 +455,56 @@ export interface AuditLogResponse {
   page: number
   size: number
 }
+
+export interface GitlabHost {
+  id: number
+  gitlab_host: string
+  is_https: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface UserGitlabConfig {
+  id: number
+  user_id: number
+  gitlab_host_id: number
+  token: string
+  is_validated: boolean
+  gitlab_host: GitlabHost
+  created_at: string
+  updated_at: string
+}
+
 export interface ResourceTemplate {
   ID: number
   name: string
   description: string
   yaml: string
+}
+
+export interface Anomaly {
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  title: string
+  message: string
+  remediation?: string
+  ruleId: string
+  docUrl?: string
+}
+
+export interface ResourceAnalysis {
+  anomalies: Anomaly[]
+  summary?: string
+  score?: number
+}
+
+// Extend existing types with analysis
+export interface WithAnalysis {
+  analysis?: ResourceAnalysis
+}
+
+export interface UserAWSConfig {
+  user_id: number
+  credentials_content: string
+  createdAt: string
+  updatedAt: string
 }

@@ -1,8 +1,8 @@
-# Kite - Modern Kubernetes Dashboard
+# Cloud Sentinel K8s - Modern Kubernetes Dashboard
 
 <div align="center">
 
-<img src="./docs/assets/logo.svg" alt="Kite Logo" width="128" height="128">
+<img src="./docs/assets/logo.svg" alt="Cloud Sentinel K8s Logo" width="128" height="128">
 
 _A modern, intuitive Kubernetes dashboard_
 
@@ -10,15 +10,15 @@ _A modern, intuitive Kubernetes dashboard_
 [![React](https://img.shields.io/badge/React-19+-61DAFB?style=flat&logo=react)](https://reactjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/License-Apache-green.svg)](LICENSE)
-[![HelloGitHub](https://api.hellogithub.com/v1/widgets/recommend.svg?rid=a8bd165df55f41a295b62c716228b007&claim_uid=w5uk718RFhDzdCX&theme=small)](https://hellogithub.com/repository/zxh326/kite)
+[![HelloGitHub](https://api.hellogithub.com/v1/widgets/recommend.svg?rid=a8bd165df55f41a295b62c716228b007&claim_uid=w5uk718RFhDzdCX&theme=small)](https://hellogithub.com/repository/pixelvide/cloud-sentinel-k8s)
 
-[**Live Demo**](https://kite-demo.zzde.me) | [**Documentation**](https://kite.zzde.me)
+[**Live Demo**](https://cloud-sentinel-k8s-demo.pixelvide.cloud) | [**Documentation**](https://cloud-sentinel-k8s.pixelvide.cloud)
 <br>
-**English** | [中文](./README_zh.md)
+**English**
 
 </div>
 
-Kite is a lightweight, modern Kubernetes dashboard that provides an intuitive interface for managing and monitoring your Kubernetes clusters. It offers real-time metrics, comprehensive resource management, multi-cluster support, and a beautiful user experience.
+Cloud Sentinel K8s is a lightweight, modern Kubernetes dashboard that provides an intuitive interface for managing and monitoring your Kubernetes clusters. It offers real-time metrics, comprehensive resource management, multi-cluster support, and a beautiful user experience.
 
 > [!WARNING]
 > This project is currently in rapid development and testing, and the usage and API may change.
@@ -32,7 +32,7 @@ _Comprehensive cluster overview with real-time metrics and resource statistics_
 
 - 🌓 **Multi-Theme Support** - Dark/light/color themes with system preference detection
 - 🔍 **Advanced Search** - Global search across all resources
-- 🌐 **Internationalization** - Support for English and Chinese languages
+- 🌐 **Internationalization** - Support for English language
 - 📱 **Responsive Design** - Optimized for desktop, tablet, and mobile devices
 
 ### 🏘️ **Multi-Cluster Management**
@@ -52,7 +52,7 @@ _Comprehensive cluster overview with real-time metrics and resource statistics_
 - 🔄 **Custom Resources** - Full support for CRDs (Custom Resource Definitions)
 - 🏷️ **Quick Image Tag Selector** - Easily select and change container image tags based on Docker and container registry APIs
 - 🎨 **Customizable Sidebar** - Customize sidebar visibility and order, and add CRDs for quick access
-- 🔌 **Kube Proxy** - Access pods or services directly through Kite, no more `kubectl port-forward`
+- 🔌 **Kube Proxy** - Access pods or services directly through Cloud Sentinel K8s, no more `kubectl port-forward`
 
 ### 📈 **Monitoring & Observability**
 
@@ -73,14 +73,14 @@ _Comprehensive cluster overview with real-time metrics and resource statistics_
 
 ## 🚀 Quick Start
 
-For detailed instructions, please refer to the [documentation](https://kite.zzde.me/guide/installation.html).
+For detailed instructions, please refer to the [documentation](https://cloud-sentinel-k8s.pixelvide.cloud/guide/installation.html).
 
 ### Docker
 
-To run Kite using Docker, you can use the pre-built image:
+To run Cloud Sentinel K8s using Docker, you can use the pre-built image:
 
 ```bash
-docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
+docker run --rm -p 8080:8080 ghcr.io/pixelvide/cloud-sentinel-k8s:latest
 ```
 
 ### Deploy in Kubernetes
@@ -90,14 +90,14 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 1. **Add Helm repository**
 
    ```bash
-   helm repo add kite https://zxh326.github.io/kite
+   helm repo add cloud-sentinel-k8s https://pixelvide.github.io/cloud-sentinel-k8s
    helm repo update
    ```
 
 2. **Install with default values**
 
    ```bash
-   helm install kite kite/kite -n kube-system
+   helm install cloud-sentinel-k8s cloud-sentinel-k8s/cloud-sentinel-k8s -n kube-system
    ```
 
 #### Using kubectl
@@ -107,13 +107,13 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
    ```bash
    kubectl apply -f deploy/install.yaml
    # or install it online
-   kubectl apply -f https://raw.githubusercontent.com/zxh326/kite/refs/heads/main/deploy/install.yaml
+   kubectl apply -f https://raw.githubusercontent.com/pixelvide/cloud-sentinel-k8s/refs/heads/main/deploy/install.yaml
    ```
 
 2. **Access via port-forward**
 
    ```bash
-   kubectl port-forward -n kube-system svc/kite 8080:8080
+   kubectl port-forward -n kube-system svc/cloud-sentinel-k8s 8080:8080
    ```
 
 ### Build from Source
@@ -123,8 +123,8 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/zxh326/kite.git
-   cd kite
+   git clone https://github.com/pixelvide/cloud-sentinel-k8s.git
+   cd cloud-sentinel-k8s
    ```
 
 2. **Build the project**
@@ -144,38 +144,12 @@ docker run --rm -p 8080:8080 ghcr.io/zxh326/kite:latest
 
 ## 🔍 Troubleshooting
 
-For troubleshooting, please refer to the [documentation](https://kite.zzde.me).
+For troubleshooting, please refer to the [documentation](https://cloud-sentinel-k8s.pixelvide.cloud).
 
-## 💖 Support This Project
-
-If you find Kite helpful, please consider supporting its development! Your donations help maintain and improve this project.
-
-### Donation Methods
-
-<table>
-  <tr>
-    <td align="center">
-      <b>Alipay</b><br>
-      <img src="./docs/donate/alipay.jpeg" alt="Alipay QR Code" width="200">
-    </td>
-    <td align="center">
-      <b>WeChat Pay</b><br>
-      <img src="./docs/donate/wechat.jpeg" alt="WeChat Pay QR Code" width="200">
-    </td>
-    <td align="center">
-      <b>PayPal</b><br>
-      <a href="https://www.paypal.me/zxh326">
-        <img src="https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_111x69.jpg" alt="PayPal" width="150">
-      </a>
-    </td>
-  </tr>
-</table>
-
-Thank you for your support! ❤️
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [contributing guidelines](https://kite.zzde.me/faq.html#how-can-i-contribute-to-kite) for details on how to get involved.
+We welcome contributions! Please see our [contributing guidelines](https://cloud-sentinel-k8s.pixelvide.cloud/faq.html#how-can-i-contribute-to-cloud-sentinel-k8s) for details on how to get involved.
 
 ## 📄 License
 

@@ -16,19 +16,19 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/pixelvide/cloud-sentinel-k8s/internal"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/auth"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/handlers"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/handlers/resources"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/middleware"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/utils"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/version"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/zxh326/kite/internal"
-	"github.com/zxh326/kite/pkg/auth"
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/handlers"
-	"github.com/zxh326/kite/pkg/handlers/resources"
-	"github.com/zxh326/kite/pkg/middleware"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
-	"github.com/zxh326/kite/pkg/utils"
-	"github.com/zxh326/kite/pkg/version"
 	"k8s.io/klog/v2"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -62,17 +62,14 @@ func setupStatic(r *gin.Engine) {
 		}
 
 		htmlContent := string(content)
-		htmlContent = utils.InjectKiteBase(htmlContent, base)
-		if common.EnableAnalytics {
-			htmlContent = utils.InjectAnalytics(htmlContent)
-		}
+		htmlContent = utils.InjectCloudSentinelK8sBase(htmlContent, base)
 
 		c.Header("Content-Type", "text/html; charset=utf-8")
 		c.String(http.StatusOK, htmlContent)
 	})
 }
 
-func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
+func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager, authHandler *auth.AuthHandler) {
 	r.GET("/metrics", gin.WrapH(promhttp.HandlerFor(prometheus.Gatherers{
 		prometheus.DefaultGatherer,
 		ctrlmetrics.Registry,
@@ -84,8 +81,8 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 	})
 	r.GET("/api/v1/init_check", handlers.InitCheck)
 	r.GET("/api/v1/version", version.GetVersion)
+
 	// Auth routes (no auth required)
-	authHandler := auth.NewAuthHandler()
 	authGroup := r.Group("/api/auth")
 	{
 		authGroup.GET("/providers", authHandler.GetProviders)
@@ -107,7 +104,6 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 	// Initialize the setup API without authentication.
 	// Once users are configured, this API cannot be used.
 	adminAPI.POST("/users/create_super_user", handlers.CreateSuperUser)
-	adminAPI.POST("/clusters/import", cm.ImportClustersFromKubeconfig)
 	adminAPI.Use(authHandler.RequireAuth(), authHandler.RequireAdmin())
 	{
 		adminAPI.GET("/audit-logs", handlers.ListAuditLogs)
@@ -124,8 +120,10 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 		{
 			clusterAPI.GET("/", cm.GetClusterList)
 			clusterAPI.POST("/", cm.CreateCluster)
+			clusterAPI.POST("/import", cm.ImportClustersFromKubeconfig)
 			clusterAPI.PUT("/:id", cm.UpdateCluster)
 			clusterAPI.DELETE("/:id", cm.DeleteCluster)
+
 		}
 
 		rbacAPI := adminAPI.Group("/roles")
@@ -150,13 +148,6 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 			userAPI.POST(":id/enable", handlers.SetUserEnabled)
 		}
 
-		apiKeyAPI := adminAPI.Group("/apikeys")
-		{
-			apiKeyAPI.GET("/", handlers.ListAPIKeys)
-			apiKeyAPI.POST("/", handlers.CreateAPIKey)
-			apiKeyAPI.DELETE("/:id", handlers.DeleteAPIKey)
-		}
-
 		templateAPI := adminAPI.Group("/templates")
 		{
 			templateAPI.POST("/", handlers.CreateTemplate)
@@ -167,7 +158,35 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 
 	// API routes group (protected)
 	api := r.Group("/api/v1")
-	api.GET("/clusters", authHandler.RequireAuth(), cm.GetClusters)
+	api.Use(authHandler.RequireAuth())
+	{
+		api.GET("/clusters", cm.GetClusters)
+		api.GET("/templates", handlers.ListTemplates)
+
+		apiKeyAPI := api.Group("/settings/api-keys")
+		{
+			apiKeyAPI.GET("/", handlers.ListAPIKeys)
+			apiKeyAPI.POST("/", handlers.CreateAPIKey)
+			apiKeyAPI.DELETE("/:id", handlers.DeleteAPIKey)
+		}
+
+		gitlabConfigAPI := api.Group("/settings/gitlab-configs")
+		{
+			gitlabConfigAPI.GET("/", handlers.ListUserGitlabConfigs)
+			gitlabConfigAPI.POST("/", handlers.UpsertUserGitlabConfig)
+			gitlabConfigAPI.POST("/:id/validate", handlers.ValidateUserGitlabConfig)
+			gitlabConfigAPI.DELETE("/:id", handlers.DeleteUserGitlabConfig)
+		}
+
+		awsConfigAPI := api.Group("/settings/aws-config")
+		{
+			awsConfigAPI.GET("/", handlers.GetUserAWSConfig)
+			awsConfigAPI.POST("/", handlers.UpdateUserAWSConfig)
+		}
+
+		api.GET("/settings/gitlab-hosts", handlers.ListGitlabHosts)
+	}
+
 	api.Use(authHandler.RequireAuth(), middleware.ClusterMiddleware(cm))
 	{
 		api.GET("/overview", handlers.GetOverview)
@@ -192,7 +211,6 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager) {
 		api.POST("/resources/apply", resourceApplyHandler.ApplyResource)
 
 		api.GET("/image/tags", handlers.GetImageTags)
-		api.GET("/templates", handlers.ListTemplates)
 
 		proxyHandler := handlers.NewProxyHandler()
 		proxyHandler.RegisterRoutes(api)
@@ -227,6 +245,8 @@ func main() {
 	rbac.InitRBAC()
 	handlers.InitTemplates()
 	internal.LoadConfigFromEnv()
+	handlers.RestoreGitlabConfigs()
+	handlers.RestoreAWSConfigs()
 
 	cm, err := cluster.NewClusterManager()
 	if err != nil {
@@ -235,7 +255,8 @@ func main() {
 
 	base := r.Group(common.Base)
 	// Setup router
-	setupAPIRouter(base, cm)
+	authHandler := auth.NewAuthHandler(cm)
+	setupAPIRouter(base, cm, authHandler)
 	setupStatic(r)
 
 	srv := &http.Server{
@@ -247,7 +268,7 @@ func main() {
 			klog.Fatalf("Failed to start server: %v", err)
 		}
 	}()
-	klog.Infof("Kite server started on port %s", common.Port)
+	klog.Infof("Cloud Sentinel K8s server started on port %s", common.Port)
 	klog.Infof("Version: %s, Build Date: %s, Commit: %s",
 		version.Version, version.BuildDate, version.CommitID)
 

@@ -1,19 +1,35 @@
 # Environment Variables
 
-Kite supports several environment variables by default to change the default values of some configuration items.
+Cloud Sentinel K8s supports several environment variables to customize its behavior.
 
-- **KITE_USERNAME**: Set the initial administrator username. Can be created through the initialization page
-- **KITE_PASSWORD**: Set the initial administrator password. Can be created through the initialization page
-- **KUBECONFIG**: Kubernetes configuration file path, default value is `~/.kube/config`. When kite has no configured clusters, it will discover and import clusters from this path by default. Can import clusters through the initialization page
-- **ANONYMOUS_USER_ENABLED**: Enable anonymous user access, default value is `false`. When enabled, all access will no longer require authentication and will have the highest permissions by default.
+## Core Configuration
 
-- **JWT_SECRET**: Secret key used for signing and verifying JWT
-- **KITE_ENCRYPT_KEY**: Secret key used for encrypting sensitive data, such as user passwords, OAuth clientSecret, kubeconfig, etc.
+- **PORT**: Port on which Cloud Sentinel K8s runs, default value is `8080`.
+- **HOST**: Used for generating OAuth 2.0 authorization callback addresses. Usually detected from request headers, but can be set manually (e.g., `https://kite.example.com`).
+- **CLOUD_SENTINEL_K8S_BASE**: Base path for the application. If set to `/kite`, the application will be accessible at `domain.com/kite`.
+- **JWT_SECRET**: Secret key used for signing and verifying JWT tokens. **Must be changed in production!**
+- **CLOUD_SENTINEL_K8S_ENCRYPT_KEY**: Secret key used for encrypting sensitive data (user passwords, tokens, kubeconfigs). **Must be changed in production!**
 
-- **HOST**: Used for generating OAuth 2.0 authorization callback addresses, default will be obtained from request headers. If you find the result not as expected, you can manually configure this environment variable.
+## Database Configuration
 
-- **NODE_TERMINAL_IMAGE**: Docker image used for generating Node Terminal Agent.
+- **DB_TYPE**: The type of database to use. Supported: `sqlite`, `mysql`, `postgres`. Default is `sqlite`.
+- **DB_DSN**: Database connection DSN.
+    - For `sqlite`: Path to the database file (e.g., `data/kite.db`). Default is `dev.db`.
+    - For `mysql`/`postgres`: Standard connection string (e.g., `user:pass@tcp(host:3306)/dbname`).
 
-- **ENABLE_ANALYTICS**: Enable data analytics functionality, default value is `false`. When enabled, Kite will collect limited data to help improve the product.
+## Authentication & Authorization
 
-- **PORT**: Port on which Kite runs, default value is `8080`.
+- **CLOUD_SENTINEL_K8S_USERNAME**: Set the initial administrator username during bootstrap.
+- **CLOUD_SENTINEL_K8S_PASSWORD**: Set the initial administrator password during bootstrap.
+- **KUBECONFIG**: Path to the initial Kubernetes configuration file. Default is `~/.kube/config`. Clusters from this config will be discovered and imported on the first run.
+
+## Third-party Integrations
+
+- **GITLAB_HOSTS**: Comma-separated list of GitLab hosts to pre-configure (e.g., `https://gitlab.com,http://my-gitlab.local`). These will be seeded into the database on startup.
+
+## Specialized Settings
+
+- **NODE_TERMINAL_IMAGE**: Docker image used for the Node Terminal Agent. Default is `busybox:latest`.
+- **DISABLE_GZIP**: Disable GZIP compression for API responses. Default is `true`.
+- **DISABLE_VERSION_CHECK**: Disable the automatic check for new application versions. Default is `false`.
+- **DISABLE_CACHE**: Disable the Kubernetes client-side cache. Default is `false`.

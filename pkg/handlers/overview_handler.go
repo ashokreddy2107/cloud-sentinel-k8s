@@ -4,9 +4,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -124,23 +124,17 @@ func GetOverview(c *gin.Context) {
 // )
 
 func InitCheck(c *gin.Context) {
-	// if initialized {
-	// 	c.JSON(http.StatusOK, gin.H{"initialized": true})
-	// 	return
-	// }
-	step := 0
-	uc, _ := model.CountUsers()
-	if uc == 0 && !common.AnonymousUserEnabled {
+	uc, err := model.CountUsers()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count users"})
+		return
+	}
+
+	if uc == 0 {
 		c.SetCookie("auth_token", "", -1, "/", "", false, true)
-		c.JSON(http.StatusOK, gin.H{"initialized": false, "step": step})
+		c.JSON(http.StatusOK, gin.H{"initialized": false, "step": 0})
+		return
 	}
-	if uc > 0 || common.AnonymousUserEnabled {
-		step++
-	}
-	cc, _ := model.CountClusters()
-	if cc > 0 {
-		step++
-	}
-	initialized := step == 2
-	c.JSON(http.StatusOK, gin.H{"initialized": initialized, "step": step})
+
+	c.JSON(http.StatusOK, gin.H{"initialized": true, "step": 1})
 }

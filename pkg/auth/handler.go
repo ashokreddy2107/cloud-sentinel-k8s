@@ -4,27 +4,34 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/utils"
 	"k8s.io/klog/v2"
 )
 
 type AuthHandler struct {
 	manager *OAuthManager
+	cm      *cluster.ClusterManager
 }
 
-func NewAuthHandler() *AuthHandler {
+func NewAuthHandler(cm *cluster.ClusterManager) *AuthHandler {
 	return &AuthHandler{
 		manager: NewOAuthManager(),
+		cm:      cm,
 	}
 }
 
 func (h *AuthHandler) GetProviders(c *gin.Context) {
 	providers := h.manager.GetAvailableProviders()
-	providers = append(providers, "password")
+	if model.IsLocalLoginEnabled() {
+		providers = append(providers, "password")
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"providers": providers,
 	})
@@ -69,6 +76,11 @@ func (h *AuthHandler) PasswordLogin(c *gin.Context) {
 		return
 	}
 
+	if !model.IsLocalLoginEnabled() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Local login is disabled"})
+		return
+	}
+
 	user, err := model.GetUserByUsername(req.Username)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -77,6 +89,17 @@ func (h *AuthHandler) PasswordLogin(c *gin.Context) {
 
 	if !model.CheckPassword(user.Password, req.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+		return
+	}
+
+	canAccess, err := model.CheckOrInitializeUserAccess(user.ID)
+	if err != nil {
+		klog.Errorf("Failed to check user access: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check user access"})
+		return
+	}
+	if !canAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "you don't have access to the app please contact the team for access"})
 		return
 	}
 
@@ -97,6 +120,10 @@ func (h *AuthHandler) PasswordLogin(c *gin.Context) {
 	}
 
 	setCookieSecure(c, "auth_token", jwtToken, common.CookieExpirationSeconds)
+
+	if h.cm != nil {
+		h.cm.UpdateUserActivity(user.ID)
+	}
 
 	c.Status(http.StatusNoContent)
 }
@@ -185,6 +212,16 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 		return
 	}
 
+	canAccess, err := model.CheckOrInitializeUserAccess(user.ID)
+	if err != nil {
+		c.Redirect(http.StatusFound, base+"/login?error=access_check_failed&reason=access_check_failed&provider="+provider)
+		return
+	}
+	if !canAccess {
+		c.Redirect(http.StatusFound, base+"/login?error=access_denied&reason=app_access_denied&provider="+provider)
+		return
+	}
+
 	// Generate JWT with refresh token support
 	jwtToken, err := h.manager.GenerateJWT(user, tokenResp.RefreshToken)
 	if err != nil {
@@ -194,6 +231,10 @@ func (h *AuthHandler) Callback(c *gin.Context) {
 
 	// Set JWT as HTTP-only cookie with secure/samesite settings
 	setCookieSecure(c, "auth_token", jwtToken, common.CookieExpirationSeconds)
+
+	if h.cm != nil {
+		h.cm.UpdateUserActivity(user.ID)
+	}
 
 	c.Redirect(http.StatusFound, base+"/")
 }
@@ -221,61 +262,72 @@ func (h *AuthHandler) GetUser(c *gin.Context) {
 }
 
 func (h *AuthHandler) RequireAPIKeyAuth(c *gin.Context, token string) {
-	keyPart := strings.SplitN(token, "-", 2)
-	if len(keyPart) < 2 {
+	if !strings.HasPrefix(token, "cspat-") {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid API key",
+			"error": "Invalid token format",
 		})
 		c.Abort()
 		return
 	}
-	id := keyPart[0]
-	key := keyPart[1]
-	dbID, err := strconv.ParseUint(id, 10, 64)
+
+	digest := utils.SHA256Hash(token)
+	var pat model.PersonalAccessToken
+	if err := model.DB.Preload("User").Where("token_digest = ?", digest).First(&pat).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid or expired token",
+		})
+		c.Abort()
+		return
+	}
+
+	if pat.ExpiresAt != nil && pat.ExpiresAt.Before(time.Now()) {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Token has expired",
+		})
+		c.Abort()
+		return
+	}
+
+	if !pat.User.Enabled {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User is disabled",
+		})
+		c.Abort()
+		return
+	}
+
+	// Update usage tracking
+	now := time.Now()
+	pat.LastUsedAt = &now
+	ip := c.ClientIP()
+	if pat.LastUsedIP == "" {
+		pat.LastUsedIP = ip
+	} else if !strings.Contains(pat.LastUsedIP, ip) {
+		// Keep a list, or just append. Let's append with comma.
+		pat.LastUsedIP = pat.LastUsedIP + "," + ip
+	}
+	model.DB.Model(&pat).Updates(map[string]interface{}{
+		"last_used_at": pat.LastUsedAt,
+		"last_used_ip": pat.LastUsedIP,
+	})
+
+	pat.User.Roles = rbac.GetUserRoles(pat.User)
+	c.Set("user", pat.User)
+
+	userConfig, err := model.GetUserConfig(pat.User.ID)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid API key",
-		})
-		c.Abort()
-		return
+		klog.Errorf("Failed to get user config for user %d: %v", pat.User.ID, err)
+	} else {
+		c.Set("userStorageNamespace", userConfig.StorageNamespace)
 	}
-	apikey, err := model.GetUserByID(dbID)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid API key",
-		})
-		c.Abort()
-		return
-	}
-	if key != string(apikey.APIKey) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid API key",
-		})
-		c.Abort()
-		return
-	}
-	_ = model.LoginUser(apikey)
-	apikey.Roles = rbac.GetUserRoles(*apikey)
-	c.Set("user", *apikey)
 }
 
 func (h *AuthHandler) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if common.AnonymousUserEnabled {
-			u := model.GetAnonymousUser()
-			if u == nil {
-				c.Set("user", model.AnonymousUser)
-			} else {
-				u.Roles = model.AnonymousUser.Roles
-				c.Set("user", *u)
-			}
-			c.Next()
-			return
-		}
 		authHeader := c.GetHeader("Authorization")
 		// bot token
 		if authHeader != "" {
-			if after, ok := strings.CutPrefix(authHeader, "kite"); ok {
+			if after, ok := strings.CutPrefix(authHeader, "cloud-sentinel-k8s"); ok {
 				h.RequireAPIKeyAuth(c, after)
 				return
 			}
@@ -326,6 +378,18 @@ func (h *AuthHandler) RequireAuth() gin.HandlerFunc {
 		}
 		user.Roles = rbac.GetUserRoles(*user)
 		c.Set("user", *user)
+
+		userConfig, err := model.GetUserConfig(user.ID)
+		if err != nil {
+			klog.Errorf("Failed to get user config for user %d: %v", user.ID, err)
+		} else {
+			c.Set("userStorageNamespace", userConfig.StorageNamespace)
+		}
+
+		if h.cm != nil {
+			h.cm.UpdateUserActivity(user.ID)
+		}
+
 		c.Next()
 	}
 }

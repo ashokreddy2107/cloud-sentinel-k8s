@@ -1,19 +1,18 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
-  IconCopy,
-  IconEye,
-  IconEyeOff,
   IconKey,
   IconPlus,
   IconShieldCheck,
   IconTrash,
+  IconCopy,
+  IconCheck,
 } from '@tabler/icons-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { APIKey } from '@/types/api'
+import { PersonalAccessToken } from '@/types/api'
 import { createAPIKey, deleteAPIKey, useAPIKeyList } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,6 +23,8 @@ import { Action, ActionTable } from '../action-table'
 import { APIKeyDialog } from './apikey-dialog'
 import UserRoleAssignment from './user-role-assignment'
 
+import { Input } from '@/components/ui/input'
+
 export function APIKeyManagement() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -31,21 +32,22 @@ export function APIKeyManagement() {
   const { data: apiKeys = [], isLoading, error } = useAPIKeyList()
 
   const [showDialog, setShowDialog] = useState(false)
-  const [deletingKey, setDeletingKey] = useState<APIKey | null>(null)
-  const [assigningKey, setAssigningKey] = useState<APIKey | null>(null)
-  const [visibleKeys, setVisibleKeys] = useState<Set<number>>(new Set())
+  const [deletingKey, setDeletingKey] = useState<PersonalAccessToken | null>(null)
+  const [assigningKey, setAssigningKey] = useState<PersonalAccessToken | null>(null)
+  const [generatedToken, setGeneratedToken] = useState<{ name: string, token: string } | null>(null)
+  const [search, setSearch] = useState('')
 
-  const toggleKeyVisibility = useCallback((id: number) => {
-    setVisibleKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [])
+  const filteredKeys = useMemo(() => {
+    if (!search.trim()) return apiKeys
+    const s = search.toLowerCase()
+    return apiKeys.filter(
+      (k) =>
+        k.name.toLowerCase().includes(s) ||
+        k.user?.username.toLowerCase().includes(s) ||
+        String(k.userId).includes(s)
+    )
+  }, [apiKeys, search])
+
 
   const copyToClipboard = useCallback(
     (text: string) => {
@@ -55,64 +57,63 @@ export function APIKeyManagement() {
     [t]
   )
 
-  const columns = useMemo<ColumnDef<APIKey>[]>(
+  const columns = useMemo<ColumnDef<PersonalAccessToken>[]>(
     () => [
       {
         id: 'name',
         header: t('apikeyManagement.table.name', 'Name'),
         cell: ({ row: { original: apiKey } }) => (
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{apiKey.username}</span>
+          <div className="flex flex-col">
+            <span className="font-medium">{apiKey.name}</span>
+            <span className="text-xs text-muted-foreground">Owner: {apiKey.user?.username || apiKey.userId}</span>
           </div>
         ),
       },
       {
-        id: 'key',
-        header: t('apikeyManagement.table.key', 'API Key'),
-        cell: ({ row: { original: apiKey } }) => {
-          const isVisible = visibleKeys.has(apiKey.id)
-          const displayKey = isVisible ? apiKey.apiKey : '•'.repeat(18)
-
-          return (
-            <div className="flex items-center gap-2">
-              <code className="text-sm bg-muted px-2 py-1 rounded">
-                {displayKey}
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleKeyVisibility(apiKey.id)}
-              >
-                {isVisible ? (
-                  <IconEyeOff className="h-4 w-4" />
-                ) : (
-                  <IconEye className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => copyToClipboard(apiKey.apiKey)}
-              >
-                <IconCopy className="h-4 w-4" />
-              </Button>
-            </div>
-          )
-        },
+        id: 'prefix',
+        header: t('apikeyManagement.table.prefix', 'Prefix'),
+        cell: ({ row: { original: apiKey } }) => (
+          <code className="text-sm bg-muted px-2 py-1 rounded">
+            {apiKey.prefix}...
+          </code>
+        ),
       },
       {
         id: 'lastUsedAt',
-        header: t('apikeyManagement.table.lastUsed', 'Last Used'),
-        cell: ({ row: { original: apiKey } }) =>
-          apiKey.lastLoginAt ? (
-            <span className="text-sm text-muted-foreground">
-              {new Date(apiKey.lastLoginAt).toLocaleString()}
+        header: t('apikeyManagement.table.lastActive', 'Last Active'),
+        cell: ({ row: { original: apiKey } }) => (
+          <div className="flex flex-col gap-1">
+            {apiKey.lastUsedAt ? (
+              <span className="text-sm">
+                {new Date(apiKey.lastUsedAt).toLocaleString()}
+              </span>
+            ) : (
+              <Badge variant="secondary">
+                {t('apikeyManagement.neverUsed', 'Never')}
+              </Badge>
+            )}
+            {apiKey.lastUsedIP && (
+              <span className="text-xs text-muted-foreground font-mono">
+                IP: {apiKey.lastUsedIP.split(',').pop()}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: 'expiresAt',
+        header: t('apikeyManagement.table.expiresAt', 'Expires At'),
+        cell: ({ row: { original: apiKey } }) => {
+          if (!apiKey.expiresAt) return <span className="text-sm">-</span>
+          const expiry = new Date(apiKey.expiresAt)
+          const isExpired = expiry < new Date()
+          return (
+            <span className={`text-sm ${isExpired ? 'text-destructive font-medium' : ''}`}>
+              {expiry.toLocaleDateString()}
+              {isExpired && ` (${t('apikeyManagement.expired', 'Expired')})`}
             </span>
-          ) : (
-            <Badge variant="secondary">
-              {t('apikeyManagement.neverUsed', 'Never')}
-            </Badge>
-          ),
+          )
+        },
       },
       {
         id: 'createdAt',
@@ -133,10 +134,10 @@ export function APIKeyManagement() {
         ),
       },
     ],
-    [t, visibleKeys, toggleKeyVisibility, copyToClipboard]
+    [t]
   )
 
-  const actions = useMemo<Action<APIKey>[]>(
+  const actions = useMemo<Action<PersonalAccessToken>[]>(
     () => [
       {
         label: (
@@ -165,7 +166,7 @@ export function APIKeyManagement() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['apikey-list'] })
       setShowDialog(false)
-      setVisibleKeys(new Set([data.apiKey.id]))
+      setGeneratedToken({ name: data.apiKey.name, token: data.token })
       toast.success(
         t('apikeyManagement.messages.created', 'API Key created successfully')
       )
@@ -200,7 +201,7 @@ export function APIKeyManagement() {
   })
 
   const handleCreate = useCallback(
-    (data: { name: string }) => {
+    (data: { name: string, expiresAt?: string }) => {
       createMutation.mutate(data)
     },
     [createMutation]
@@ -226,25 +227,74 @@ export function APIKeyManagement() {
 
   return (
     <>
+      {generatedToken && (
+        <Card className="mb-6 border-primary bg-primary/5">
+          <CardHeader>
+            <CardTitle className="text-primary flex items-center gap-2">
+              <IconCheck className="h-5 w-5" />
+              {t('apikeyManagement.generated.title', 'Key Generated Successfully')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm">
+              {t(
+                'apikeyManagement.generated.description',
+                "Please copy your API key now. You won't be able to see it again!"
+              )}
+            </p>
+            <div className="flex items-center gap-2 p-3 bg-background border rounded-md font-mono text-sm break-all">
+              {generatedToken.token}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto flex-shrink-0"
+                onClick={() => copyToClipboard(generatedToken.token)}
+              >
+                <IconCopy className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setGeneratedToken(null)}
+            >
+              {t('common.dismiss', 'Dismiss')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <IconKey className="h-5 w-5" />
-                {t('apikeyManagement.title', 'API Key')}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {t(
-                  'apikeyManagement.description',
-                  'Manage API keys for programmatic access'
-                )}
-              </p>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <IconKey className="h-5 w-5" />
+                  {t('apikeyManagement.title', 'API Key')}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {t(
+                    'apikeyManagement.description',
+                    'Manage API keys for programmatic access'
+                  )}
+                </p>
+              </div>
+              <Button onClick={() => setShowDialog(true)}>
+                <IconPlus className="mr-2 h-4 w-4" />
+                {t('apikeyManagement.actions.add', 'Add API Key')}
+              </Button>
             </div>
-            <Button onClick={() => setShowDialog(true)}>
-              <IconPlus className="mr-2 h-4 w-4" />
-              {t('apikeyManagement.actions.add', 'Add API Key')}
-            </Button>
+            {apiKeys.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder={t('apikeyManagement.searchPlaceholder', 'Filter by name or owner...')}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="max-w-sm"
+                />
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -262,7 +312,7 @@ export function APIKeyManagement() {
               </p>
             </div>
           ) : (
-            <ActionTable columns={columns} data={apiKeys} actions={actions} />
+            <ActionTable columns={columns} data={filteredKeys} actions={actions} />
           )}
         </CardContent>
       </Card>
@@ -279,7 +329,7 @@ export function APIKeyManagement() {
         onOpenChange={(open: boolean) => !open && setAssigningKey(null)}
         subject={
           assigningKey
-            ? { type: 'user', name: assigningKey.username }
+            ? { type: 'user', name: assigningKey.user?.username || String(assigningKey.userId) }
             : undefined
         }
       />
@@ -288,7 +338,7 @@ export function APIKeyManagement() {
         open={!!deletingKey}
         onOpenChange={(open: boolean) => !open && setDeletingKey(null)}
         onConfirm={handleDelete}
-        resourceName={deletingKey?.username || ''}
+        resourceName={deletingKey?.name || ''}
         resourceType="API Key"
         isDeleting={deleteMutation.isPending}
       />

@@ -41,6 +41,7 @@ import { ConnectionIndicator } from './connection-indicator'
 import { NetworkSpeedIndicator } from './network-speed-indicator'
 import { ContainerSelector } from './selector/container-selector'
 import { PodSelector } from './selector/pod-selector'
+import { useCluster } from '@/hooks/use-cluster'
 
 interface TerminalProps {
   type?: 'node' | 'pod'
@@ -61,6 +62,7 @@ export function Terminal({
   initContainers = [],
   type = 'pod',
 }: TerminalProps) {
+  const { currentCluster } = useCluster()
   const containers = useMemo(() => {
     return toSimpleContainer(initContainers, _containers)
   }, [_containers, initContainers])
@@ -155,7 +157,7 @@ export function Terminal({
   // Handle font size change and persist to localStorage
   const handleFontSizeChange = useCallback((size: number) => {
     setFontSize(size)
-    localStorage.setItem('log-viewer-font-size', size.toString()) // 与 log viewer 共用同一个 key
+    localStorage.setItem('log-viewer-font-size', size.toString()) // Shared with log viewer
     // Update terminal font size without recreating the instance
     if (xtermRef.current && fitAddonRef.current) {
       xtermRef.current.options.fontSize = size
@@ -291,7 +293,6 @@ export function Terminal({
 
     // WebSocket connection
     setIsConnected(false)
-    const currentCluster = localStorage.getItem('current-cluster')
     const wsPath =
       type === 'pod'
         ? `/api/v1/terminal/${namespace}/${selectedPod}/ws?container=${selectedContainer}&x-cluster-name=${currentCluster}`

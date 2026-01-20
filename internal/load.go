@@ -4,27 +4,27 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/klog/v2"
 )
 
 var (
-	kiteUsername = os.Getenv("KITE_USERNAME")
-	kitePassword = os.Getenv("KITE_PASSWORD")
+	cloudSentinelK8sUsername = os.Getenv("CLOUD_SENTINEL_K8S_USERNAME")
+	cloudSentinelK8sPassword = os.Getenv("CLOUD_SENTINEL_K8S_PASSWORD")
 )
 
 func loadUser() error {
-	if kiteUsername != "" && kitePassword != "" {
+	if cloudSentinelK8sUsername != "" && cloudSentinelK8sPassword != "" {
 		uc, err := model.CountUsers()
 		if err == nil && uc == 0 {
-			klog.Infof("Creating super user %s from environment variables", kiteUsername)
+			klog.Infof("Creating super user %s from environment variables", cloudSentinelK8sUsername)
 			u := &model.User{
-				Username: kiteUsername,
-				Password: kitePassword,
+				Username: cloudSentinelK8sUsername,
+				Password: cloudSentinelK8sPassword,
 			}
 			err := model.AddSuperUser(u)
 			if err == nil {

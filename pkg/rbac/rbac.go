@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
 	"k8s.io/klog/v2"
 )
 

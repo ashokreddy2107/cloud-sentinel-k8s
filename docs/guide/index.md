@@ -1,6 +1,6 @@
-# What is Kite?
+# What is Cloud Sentinel K8s?
 
-Kite is a lightweight, modern Kubernetes dashboard that provides an intuitive interface for managing and monitoring Kubernetes clusters. It offers real-time metrics, comprehensive resource management, multi-cluster support, and a beautiful user experience.
+Cloud Sentinel K8s is a lightweight, modern Kubernetes dashboard that provides an intuitive interface for managing and monitoring Kubernetes clusters. It offers real-time metrics, comprehensive resource management, multi-cluster support, and a beautiful user experience.
 
 ![Dashboard Overview](/screenshots/overview.png)
 
@@ -30,7 +30,7 @@ Kite is a lightweight, modern Kubernetes dashboard that provides an intuitive in
 - 🔄 **Custom Resources** - Full support for CRDs (Custom Resource Definitions)
 - 🏷️ **Quick Image Tag Selector** - Easily select and change container image tags based on Docker and container registry APIs
 - 🎨 **Customizable Sidebar** - Customize sidebar visibility and order, and add CRDs for quick access
-- 🔌 **Kube Proxy** - Access pods or services directly through Kite, no more `kubectl port-forward`
+- 🔌 **Kube Proxy** - Access pods or services directly through Cloud Sentinel K8s, no more `kubectl port-forward`
 
 ### 📈 **Monitoring & Observability**
 
@@ -49,4 +49,4 @@ Kite is a lightweight, modern Kubernetes dashboard that provides an intuitive in
 
 ## Getting Started
 
-Ready to explore Kite? Check out the [installation guide](./installation).
+Ready to explore Cloud Sentinel K8s? Check out the [installation guide](./installation).

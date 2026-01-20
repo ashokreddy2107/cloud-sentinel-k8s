@@ -12,7 +12,7 @@ func TestGetImageRegistryAndRepo(t *testing.T) {
 	}{
 		{"nginx", "", "library/nginx"},
 		{"nginx:latest", "", "library/nginx"},
-		{"zzde/kite:latest", "", "zzde/kite"},
+		{"pixelvide/cloud-sentinel-k8s:latest", "", "pixelvide/cloud-sentinel-k8s"},
 		{"docker.io/library/nginx", "docker.io", "library/nginx"},
 		{"docker.io/library/nginx:latest", "docker.io", "library/nginx"},
 		{"gcr.io/my-project/my-image", "gcr.io", "my-project/my-image"},
@@ -45,4 +45,9 @@ func TestGenerateNodeAgentName(t *testing.T) {
 			t.Errorf("GenerateNodeAgentName(%q) = %q, length %d exceeds 63", tc.nodeName, podName, len(podName))
 		}
 	}
+}
+
+func TestGetUserGlabConfigDir(t *testing.T) {
+	// Skip execution as it requires root permissions to write to /data
+	t.Skip("Skipping execution of GetUserGlabConfigDir as it requires root permissions to write to /data")
 }

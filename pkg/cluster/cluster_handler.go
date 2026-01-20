@@ -9,37 +9,65 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
 	"gorm.io/gorm"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 )
 
 func (cm *ClusterManager) GetClusters(c *gin.Context) {
-	result := make([]common.ClusterInfo, 0, len(cm.clusters))
 	user := c.MustGet("user").(model.User)
-	for name, cluster := range cm.clusters {
-		if !rbac.CanAccessCluster(user, name) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	result := make([]common.ClusterInfo, 0)
+
+	// We should show clusters that are either in shared map OR in user map for this user
+	// But actually, we should iterate over all ENABLED clusters from DB that the user can access
+	clusters, err := model.ListClusters()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	for _, cluster := range clusters {
+		if !cluster.Enable || !rbac.CanAccessCluster(user, cluster.Name) {
 			continue
 		}
-		result = append(result, common.ClusterInfo{
-			Name:      name,
-			Version:   cluster.Version,
-			IsDefault: name == cm.defaultContext,
-		})
-	}
-	for name, errMsg := range cm.errors {
-		if !rbac.CanAccessCluster(user, name) {
-			continue
+
+		info := common.ClusterInfo{
+			Name:      cluster.Name,
+			IsDefault: cluster.Name == cm.defaultContext,
 		}
-		result = append(result, common.ClusterInfo{
-			Name:      name,
-			Version:   "",
-			IsDefault: false,
-			Error:     errMsg,
-		})
+
+		// Check shared client
+		if cs, ok := cm.clusters[cluster.Name]; ok {
+			info.Version = cs.Version
+		} else if userMap, ok := cm.userClients[cluster.Name]; ok {
+			// Check user client
+			if uc, ok := userMap[user.ID]; ok {
+				if uc.ClientSet != nil {
+					info.Version = uc.ClientSet.Version
+					klog.Infof("GetClusters: Using user version %s for cluster %s (user %d)", info.Version, cluster.Name, user.ID)
+				}
+				if uc.Error != "" {
+					info.Error = uc.Error
+				}
+			}
+		}
+
+		if info.Version == "" && info.Error == "" {
+			// Check for shared errors
+			if errMsg, ok := cm.errors[cluster.Name]; ok {
+				info.Error = errMsg
+			}
+		}
+
+		result = append(result, info)
 	}
+
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
@@ -53,8 +81,17 @@ func (cm *ClusterManager) GetClusterList(c *gin.Context) {
 		return
 	}
 
+	// Check if user is admin
+	user, exists := c.Get("user")
+	isAdmin := exists && rbac.UserHasRole(user.(model.User), model.DefaultAdminRole.Name)
+
 	result := make([]gin.H, 0, len(clusters))
 	for _, cluster := range clusters {
+		config := ""
+		if isAdmin {
+			config = string(cluster.Config)
+		}
+
 		clusterInfo := gin.H{
 			"id":            cluster.ID,
 			"name":          cluster.Name,
@@ -63,14 +100,26 @@ func (cm *ClusterManager) GetClusterList(c *gin.Context) {
 			"inCluster":     cluster.InCluster,
 			"isDefault":     cluster.IsDefault,
 			"prometheusURL": cluster.PrometheusURL,
-			"config":        "",
+			"config":        config,
 		}
 
 		if clientSet, exists := cm.clusters[cluster.Name]; exists {
 			clusterInfo["version"] = clientSet.Version
+		} else if userMap, ok := cm.userClients[cluster.Name]; ok {
+			if uc, ok := userMap[user.(model.User).ID]; ok {
+				if uc.ClientSet != nil {
+					clusterInfo["version"] = uc.ClientSet.Version
+				}
+				if uc.Error != "" {
+					clusterInfo["error"] = uc.Error
+				}
+			}
 		}
-		if errMsg, exists := cm.errors[cluster.Name]; exists {
-			clusterInfo["error"] = errMsg
+
+		if clusterInfo["version"] == nil && clusterInfo["error"] == nil {
+			if errMsg, exists := cm.errors[cluster.Name]; exists {
+				clusterInfo["error"] = errMsg
+			}
 		}
 
 		result = append(result, clusterInfo)
@@ -240,16 +289,6 @@ func (cm *ClusterManager) ImportClustersFromKubeconfig(c *gin.Context) {
 
 	if !clusterReq.InCluster && clusterReq.Config == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "config is required when inCluster is false"})
-		return
-	}
-
-	cc, err := model.CountClusters()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if cc > 0 {
-		c.JSON(http.StatusForbidden, gin.H{"error": "import not allowed when clusters exist"})
 		return
 	}
 

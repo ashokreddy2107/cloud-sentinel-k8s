@@ -1,45 +1,45 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kite
+  name: cloud-sentinel-k8s
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
 subjects:
   - kind: ServiceAccount
-    name: kite
+    name: cloud-sentinel-k8s
     namespace: kube-system
 ---
 kind: ServiceAccount
 apiVersion: v1
 metadata:
-  name: kite
+  name: cloud-sentinel-k8s
   namespace: kube-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: kite
-  name: kite
+    app: cloud-sentinel-k8s
+  name: cloud-sentinel-k8s
   namespace: kube-system
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kite
+      app: cloud-sentinel-k8s
   strategy: {}
   template:
     metadata:
       labels:
-        app: kite
+        app: cloud-sentinel-k8s
     spec:
-      serviceAccountName: kite
+      serviceAccountName: cloud-sentinel-k8s
       containers:
-        - image: ghcr.io/zxh326/kite:latest
+        - image: ghcr.io/pixelvide/cloud-sentinel-k8s:latest
           imagePullPolicy: IfNotPresent
-          name: kite
+          name: cloud-sentinel-k8s
           resources:
             limits:
               cpu: 1000m
@@ -67,8 +67,8 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: kite
-  name: kite
+    app: cloud-sentinel-k8s
+  name: cloud-sentinel-k8s
   namespace: kube-system
 spec:
   ports:
@@ -77,5 +77,5 @@ spec:
       protocol: TCP
       targetPort: 8080
   selector:
-    app: kite
+    app: cloud-sentinel-k8s
   type: ClusterIP

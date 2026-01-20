@@ -3,7 +3,7 @@
 set -x
 
 version="$1"
-CHART_DIR="charts/kite"
+CHART_DIR="charts/cloud-sentinel-k8s"
 if [ -z "$version" ]; then
   echo "❌ Version argument is required"
   exit 1

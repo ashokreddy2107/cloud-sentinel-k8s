@@ -2,11 +2,11 @@ import { defineConfig } from "vitepress";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "Kite",
+  title: "Cloud Sentinel K8s",
   description: "A modern, intuitive Kubernetes dashboard",
 
   sitemap: {
-    hostname: "https://kite.zzde.me",
+    hostname: "https://cloud-sentinel-k8s.pixelvide.cloud",
     lastmodDateOnly: false,
   },
 
@@ -26,7 +26,7 @@ export default defineConfig({
       label: "中文",
       lang: "zh-CN",
       link: "/zh/",
-      title: "Kite",
+      title: "Cloud Sentinel K8s",
       description: "一个现代的、直观的 Kubernetes 仪表盘",
       themeConfig: {
         nav: [
@@ -36,7 +36,7 @@ export default defineConfig({
           { text: "常见问题", link: "/zh/faq" },
         ],
         editLink: {
-          pattern: "https://github.com/zxh326/kite/tree/main/docs/:path",
+          pattern: "https://github.com/pixelvide/cloud-sentinel-k8s/tree/main/docs/:path",
           text: "在 GitHub 上编辑此页面",
         },
       },
@@ -45,14 +45,7 @@ export default defineConfig({
 
   head: [
     ["link", { rel: "icon", href: "/logo.svg" }],
-    [
-      "script",
-      {
-        src: "https://cloud.umami.is/script.js",
-        "data-website-id": "764af8e4-8fa4-4fc5-83e2-304718cc15fe",
-        defer: "true",
-      },
-    ],
+
   ],
 
   themeConfig: {
@@ -63,7 +56,7 @@ export default defineConfig({
     },
     langMenuLabel: "Language",
     editLink: {
-      pattern: "https://github.com/zxh326/kite/tree/main/docs/:path",
+      pattern: "https://github.com/pixelvide/cloud-sentinel-k8s/tree/main/docs/:path",
       text: "Edit this page on GitHub",
     },
 
@@ -79,7 +72,7 @@ export default defineConfig({
         {
           text: "Introduction",
           items: [
-            { text: "What is Kite?", link: "/guide/" },
+            { text: "What is Cloud Sentinel K8s?", link: "/guide/" },
             { text: "Getting Started", link: "/guide/installation" },
           ],
         },
@@ -117,7 +110,7 @@ export default defineConfig({
         {
           text: "介绍",
           items: [
-            { text: "什么是 Kite?", link: "/zh/guide/" },
+            { text: "什么是 Cloud Sentinel K8s?", link: "/zh/guide/" },
             { text: "开始", link: "/zh/guide/installation" },
           ],
         },
@@ -153,11 +146,11 @@ export default defineConfig({
       ],
     },
 
-    socialLinks: [{ icon: "github", link: "https://github.com/zxh326/kite" }],
+    socialLinks: [{ icon: "github", link: "https://github.com/pixelvide/cloud-sentinel-k8s" }],
 
     footer: {
       message: "Released under the Apache License.",
-      copyright: "Copyright © 2025-present Kite Contributors",
+      copyright: "Copyright © 2025-present Cloud Sentinel K8s Contributors",
     },
   },
 });

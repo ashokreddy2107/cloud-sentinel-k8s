@@ -1,14 +1,15 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/cluster"
-	"github.com/zxh326/kite/pkg/common"
-	"github.com/zxh326/kite/pkg/model"
-	"github.com/zxh326/kite/pkg/rbac"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/rbac"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
@@ -79,30 +80,41 @@ func (h *ResourceApplyHandler) ApplyResource(c *gin.Context) {
 		if err != nil {
 			errMessage = err.Error()
 		}
-		model.DB.Create(&model.ResourceHistory{
-			ClusterName:   cs.Name,
-			ResourceType:  resource,
-			ResourceName:  obj.GetName(),
-			Namespace:     obj.GetNamespace(),
-			OperationType: "apply",
-			ResourceYAML:  req.YAML,
-			PreviousYAML:  string(previousYAML),
-			OperatorID:    user.ID,
-			Success:       err == nil,
-			ErrorMessage:  errMessage,
+
+		payloadData := map[string]interface{}{
+			"clusterName":  cs.Name,
+			"resourceType": resource,
+			"resourceName": obj.GetName(),
+			"namespace":    obj.GetNamespace(),
+			"resourceYaml": req.YAML,
+			"previousYaml": string(previousYAML),
+		}
+		payloadBytes, _ := json.Marshal(payloadData)
+
+		model.DB.Create(&model.AuditLog{
+			AppID:        model.CurrentApp.ID,
+			Action:       "apply",
+			ActorID:      user.ID,
+			Payload:      string(payloadBytes),
+			Success:      err == nil,
+			ErrorMessage: errMessage,
+			IPAddress:    c.ClientIP(),
+			UserAgent:    c.Request.UserAgent(),
 		})
 	}()
 
 	switch {
 	case apierrors.IsNotFound(err):
-		if err := cs.K8sClient.Create(ctx, obj); err != nil {
+		err = cs.K8sClient.Create(ctx, obj)
+		if err != nil {
 			klog.Errorf("Failed to create resource: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create resource: " + err.Error()})
 			return
 		}
 	case err == nil:
 		obj.SetResourceVersion(existingObj.GetResourceVersion())
-		if err := cs.K8sClient.Update(ctx, obj); err != nil {
+		err = cs.K8sClient.Update(ctx, obj)
+		if err != nil {
 			klog.Errorf("Failed to update resource: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update resource: " + err.Error()})
 			return

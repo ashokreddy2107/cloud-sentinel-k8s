@@ -1,5 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
-import { IconEdit, IconPlus, IconServer, IconTrash } from '@tabler/icons-react'
+import {
+  IconCloudUpload,
+  IconEdit,
+  IconPlus,
+  IconServer,
+  IconTrash,
+} from '@tabler/icons-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
@@ -7,10 +13,10 @@ import { toast } from 'sonner'
 
 import { Cluster } from '@/types/api'
 import {
-  ClusterCreateRequest,
   ClusterUpdateRequest,
   createCluster,
   deleteCluster,
+  importClusters,
   updateCluster,
   useClusterList,
 } from '@/lib/api'
@@ -34,6 +40,7 @@ export function ClusterManagement() {
   const { data: clusters = [], isLoading, error } = useClusterList()
 
   const [showClusterDialog, setShowClusterDialog] = useState(false)
+  const [isImportMode, setIsImportMode] = useState(false)
   const [editingCluster, setEditingCluster] = useState<Cluster | null>(null)
   const [deletingCluster, setDeletingCluster] = useState<Cluster | null>(null)
 
@@ -186,10 +193,10 @@ export function ClusterManagement() {
     onError: (error: Error) => {
       toast.error(
         error.message ||
-          t(
-            'clusterManagement.messages.createError',
-            'Failed to create cluster'
-          )
+        t(
+          'clusterManagement.messages.createError',
+          'Failed to create cluster'
+        )
       )
     },
   })
@@ -209,10 +216,10 @@ export function ClusterManagement() {
     onError: (error: Error) => {
       toast.error(
         error.message ||
-          t(
-            'clusterManagement.messages.updateError',
-            'Failed to update cluster'
-          )
+        t(
+          'clusterManagement.messages.updateError',
+          'Failed to update cluster'
+        )
       )
     },
   })
@@ -230,15 +237,33 @@ export function ClusterManagement() {
     onError: (error: Error) => {
       toast.error(
         error.message ||
-          t(
-            'clusterManagement.messages.deleteError',
-            'Failed to delete cluster'
-          )
+        t(
+          'clusterManagement.messages.deleteError',
+          'Failed to delete cluster'
+        )
       )
     },
   })
 
-  const handleSubmitCluster = (clusterData: ClusterCreateRequest) => {
+  // Import clusters mutation
+  const importMutation = useMutation({
+    mutationFn: importClusters,
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['cluster-list'] })
+      toast.success(data?.message || t('clusterManagement.messages.imported', 'Clusters imported successfully'))
+      setShowClusterDialog(false)
+      setIsImportMode(false)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t('clusterManagement.messages.importError', 'Failed to import clusters'))
+    },
+  })
+
+  const handleSubmitCluster = (clusterData: any) => {
+    if (isImportMode) {
+      importMutation.mutate(clusterData)
+      return
+    }
     if (editingCluster) {
       // Update existing cluster - use the form data directly
       updateMutation.mutate({
@@ -287,16 +312,31 @@ export function ClusterManagement() {
                 {t('clusterManagement.title', 'Cluster Management')}
               </CardTitle>
             </div>
-            <Button
-              onClick={() => {
-                setEditingCluster(null)
-                setShowClusterDialog(true)
-              }}
-              className="gap-2"
-            >
-              <IconPlus className="h-4 w-4" />
-              {t('clusterManagement.actions.add', 'Add Cluster')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingCluster(null)
+                  setIsImportMode(true)
+                  setShowClusterDialog(true)
+                }}
+                className="gap-2"
+              >
+                <IconCloudUpload className="h-4 w-4" />
+                {t('clusterManagement.actions.import', 'Import Clusters')}
+              </Button>
+              <Button
+                onClick={() => {
+                  setEditingCluster(null)
+                  setIsImportMode(false)
+                  setShowClusterDialog(true)
+                }}
+                className="gap-2"
+              >
+                <IconPlus className="h-4 w-4" />
+                {t('clusterManagement.actions.add', 'Add Cluster')}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -325,9 +365,11 @@ export function ClusterManagement() {
           setShowClusterDialog(open)
           if (!open) {
             setEditingCluster(null)
+            setIsImportMode(false)
           }
         }}
         cluster={editingCluster}
+        isImportMode={isImportMode}
         onSubmit={handleSubmitCluster}
       />
 
@@ -340,7 +382,7 @@ export function ClusterManagement() {
         resourceType="cluster"
         additionalNote={t(
           'clusterManagement.deleteConfirmation',
-          "This action will only remove the current cluster's configuration in kite and will not delete any cluster resources."
+          "This action will only remove the current cluster's configuration in cloud-sentinel-k8s and will not delete any cluster resources."
         )}
       />
     </div>

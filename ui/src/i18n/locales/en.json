@@ -199,7 +199,7 @@
     "tryAgainHint": "You can try logging in with a different account that has the required permissions.",
     "noLoginMethods": "No login methods configured",
     "configureAuth": "Please configure authentication providers in your environment",
-    "footer": "© {{year}} Kite. All rights reserved.",
+    "footer": "© {{year}} Cloud Sentinel K8s. All rights reserved.",
     "documentation": "Documentation",
     "errors": {
       "accessDenied": "Access Denied",
@@ -270,12 +270,22 @@
       "clusters": "Cluster",
       "oauth": "OAuth",
       "rbac": "RBAC",
-      "users": "User"
+      "users": "User",
+      "gitlab": "GitLab",
+      "aws": "AWS"
+    },
+    "aws": {
+      "title": "AWS Credentials",
+      "description": "Paste the content of your AWS credentials file (~/.aws/credentials) or upload it.",
+      "upload": "Upload File",
+      "saved": "AWS Credentials saved successfully",
+      "saveError": "Failed to save AWS credentials",
+      "fileLoaded": "File loaded successfully"
     }
   },
   "settingsHint": {
     "title": "Complete Your Setup",
-    "description": "Configure essential settings to get the most out of Kite",
+    "description": "Configure essential settings to get the most out of Cloud Sentinel K8s",
     "p8s": {
       "description": "Configure Prometheus"
     },
@@ -324,7 +334,7 @@
     "errors": {
       "loadFailed": "Failed to load clusters"
     },
-    "deleteConfirmation": "This action will only remove the current cluster's configuration in kite and will not delete any cluster resources.",
+    "deleteConfirmation": "This action will only remove the current cluster's configuration in cloud-sentinel-k8s and will not delete any cluster resources.",
     "dialog": {
       "createTitle": "Add Cluster",
       "editTitle": "Edit Cluster",
@@ -387,12 +397,12 @@
   },
   "initialization": {
     "title": "Initial Setup",
-    "welcome": "Welcome! Let's set up your Kite dashboard",
+    "welcome": "Welcome! Let's set up your Cloud Sentinel K8s dashboard",
     "subtitle": "Complete the following steps to get started",
     "description": "Configure your admin user and connect cluster",
     "step1": {
       "title": "Create Super Admin User",
-      "description": "If you want to use it anonymously, please set the `ANONYMOUS_USER_ENABLED` env variable to true",
+      "description": "Create the initial administrator account to manage your cluster secure and effectively.",
       "username": "Username",
       "usernameRequired": "Username *",
       "usernamePlaceholder": "Enter admin username",

@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label'
 interface APIKeyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (data: { name: string }) => void
+  onSubmit: (data: { name: string, expiresAt?: string }) => void
   isLoading?: boolean
 }
 
@@ -28,11 +28,17 @@ export function APIKeyDialog({
 }: APIKeyDialogProps) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
+  const [expiresAt, setExpiresAt] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      const defaultDate = new Date()
+      defaultDate.setDate(defaultDate.getDate() + 14)
+      setExpiresAt(defaultDate.toISOString().split('T')[0])
+    } else {
       setName('')
+      setExpiresAt('')
       setError('')
     }
   }, [open])
@@ -45,7 +51,7 @@ export function APIKeyDialog({
       return
     }
 
-    onSubmit({ name: name.trim() })
+    onSubmit({ name: name.trim(), expiresAt: expiresAt || undefined })
   }
 
   return (
@@ -82,6 +88,23 @@ export function APIKeyDialog({
                 }}
               />
               {error && <p className="text-sm text-destructive">{error}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expiresAt">
+                {t('apikeyManagement.dialog.expiresAt', 'Expiry Date (Optional)')}
+              </Label>
+              <Input
+                id="expiresAt"
+                type="date"
+                value={expiresAt}
+                min={new Date().toISOString().split('T')[0]}
+                max={new Date(new Date().setDate(new Date().getDate() + 365)).toISOString().split('T')[0]}
+                onChange={(e) => setExpiresAt(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t('apikeyManagement.dialog.expiryHint', 'Maximum 365 days from creation')}
+              </p>
             </div>
           </div>
 

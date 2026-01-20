@@ -62,6 +62,7 @@ import { ConnectionIndicator } from './connection-indicator'
 import { ErrorMessage } from './error-message'
 import { ResourceTableView } from './resource-table-view'
 import { NamespaceSelector } from './selector/namespace-selector'
+import { useCluster } from '@/hooks/use-cluster'
 
 export interface ResourceTableProps<T> {
   resourceName: string
@@ -88,6 +89,7 @@ export function ResourceTable<T>({
   defaultHiddenColumns = [],
 }: ResourceTableProps<T>) {
   const { t } = useTranslation()
+  const { currentCluster } = useCluster()
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
     const currentCluster = localStorage.getItem('current-cluster')
@@ -141,7 +143,7 @@ export function ResourceTable<T>({
     )
     return clusterScope
       ? undefined // No namespace for cluster scope
-      : storedNamespace || 'default' // Default to 'default' if not set
+      : storedNamespace || '_all' // Default to '_all' if not set
   })
   const [useSSE, setUseSSE] = useState(false)
   const {
@@ -172,7 +174,11 @@ export function ResourceTable<T>({
     (resourceType ??
       (resourceName.toLowerCase() as ResourceType)) as ResourceType,
     selectedNamespace,
-    { reduce: true, enabled: useSSE }
+    {
+      reduce: true,
+      enabled: useSSE,
+      clusterName: currentCluster || undefined // Pass cluster from URL context
+    }
   )
 
   // (moved below after error is defined)
@@ -262,9 +268,12 @@ export function ResourceTable<T>({
 
     const baseColumns = [selectColumn, ...columns]
 
-    // Only add namespace column if not cluster scope, showing all namespaces,
+    const isAllNamespaces = selectedNamespace === '_all' || !selectedNamespace
+    const isMultiNamespace = selectedNamespace?.includes(',')
+
+    // Only add namespace column if not cluster scope, showing multiple or all namespaces,
     // and there isn't already a namespace column in the provided columns
-    if (!clusterScope && selectedNamespace === '_all') {
+    if (!clusterScope && (isAllNamespaces || isMultiNamespace)) {
       // Check if namespace column already exists in the provided columns
       const hasNamespaceColumn = columns.some((col) => {
         // Check if the column accesses namespace data
@@ -522,11 +531,17 @@ export function ResourceTable<T>({
           {!clusterScope && selectedNamespace && (
             <div className="text-muted-foreground flex items-center mt-1">
               <span>Namespace:</span>
-              <Badge variant="outline" className="ml-2 ">
-                {selectedNamespace === '_all'
-                  ? 'All Namespaces'
-                  : selectedNamespace}
-              </Badge>
+              <div className="flex flex-wrap gap-1 ml-2">
+                {selectedNamespace === '_all' || !selectedNamespace ? (
+                  <Badge variant="outline">All Namespaces</Badge>
+                ) : (
+                  selectedNamespace.split(',').map((ns) => (
+                    <Badge key={ns} variant="outline">
+                      {ns}
+                    </Badge>
+                  ))
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -591,6 +606,7 @@ export function ResourceTable<T>({
                 selectedNamespace={selectedNamespace}
                 handleNamespaceChange={handleNamespaceChange}
                 showAll={true}
+                multiple={true}
               />
             )}
             {/* Column Filters */}

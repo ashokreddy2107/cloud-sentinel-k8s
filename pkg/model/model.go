@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
-	"github.com/zxh326/kite/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -18,6 +18,8 @@ import (
 
 var (
 	DB *gorm.DB
+
+	CurrentApp *App
 
 	once sync.Once
 )
@@ -90,14 +92,28 @@ func InitDB() {
 			panic("failed to enable sqlite foreign keys: " + err.Error())
 		}
 	}
+
 	models := []interface{}{
+		App{},
+		AppConfig{},
+
+		GitlabHosts{},
+
 		User{},
+		PersonalAccessToken{},
+		UserConfig{},
+		UserIdentity{},
+		AppUser{},
+		UserGitlabConfig{},
+		UserAWSConfig{},
+
 		Cluster{},
 		OAuthProvider{},
 		Role{},
 		RoleAssignment{},
-		ResourceHistory{},
 		ResourceTemplate{},
+
+		AuditLog{},
 	}
 	for _, model := range models {
 		err = DB.AutoMigrate(model)
@@ -106,10 +122,93 @@ func InitDB() {
 		}
 	}
 
+	seedGitlabHosts()
+
+	// Try to get the default app
+	app, err := GetApp(common.AppName)
+	if err == nil {
+		CurrentApp = app
+	} else {
+		// If not found (or other error), try to create it
+		newApp := App{
+			Name:    common.AppName,
+			Enabled: true,
+		}
+		if err := DB.Create(&newApp).Error; err != nil {
+			panic("failed to create default app: " + err.Error())
+		}
+		CurrentApp = &newApp
+		klog.Infof("Created default app: %s", common.AppName)
+	}
+
+	// Initialize default configs if missing
+	defaultConfigs := map[string]string{
+		DefaultUserAccessKey: "true",
+		LocalLoginEnabledKey: "true",
+	}
+	for key, value := range defaultConfigs {
+		if _, err := GetAppConfig(CurrentApp.ID, key); err != nil {
+			if err := SetAppConfig(CurrentApp.ID, key, value); err != nil {
+				klog.Errorf("Failed to set default config %s: %v", key, err)
+			} else {
+				klog.Infof("Initialized default config: %s=%s", key, value)
+			}
+		}
+	}
+
 	sqldb, err := DB.DB()
 	if err == nil {
 		sqldb.SetMaxOpenConns(common.DBMaxOpenConns)
 		sqldb.SetMaxIdleConns(common.DBMaxIdleConns)
 		sqldb.SetConnMaxLifetime(common.DBMaxIdleTime)
+	}
+}
+
+// seedGitlabHosts seeds the gitlab_hosts table from the GITLAB_HOSTS environment variable
+func seedGitlabHosts() {
+	envHosts := common.GitlabHosts
+	if envHosts == "" {
+		return
+	}
+
+	hosts := strings.Split(envHosts, ",")
+	for _, hostStr := range hosts {
+		hostStr = strings.TrimSpace(hostStr)
+		if hostStr == "" {
+			continue
+		}
+
+		// Check scheme to determine HTTPS (defaulting to true if no scheme or https)
+		isHTTPS := true
+		cleanHost := hostStr
+		if strings.HasPrefix(hostStr, "http://") {
+			isHTTPS = false
+			cleanHost = strings.TrimPrefix(hostStr, "http://")
+		} else if strings.HasPrefix(hostStr, "https://") {
+			isHTTPS = true
+			cleanHost = strings.TrimPrefix(hostStr, "https://")
+		}
+
+		// Remove any path or query components, keeping just the host
+		if idx := strings.Index(cleanHost, "/"); idx != -1 {
+			cleanHost = cleanHost[:idx]
+		}
+
+		// Only proceed if we have a valid host string
+		if cleanHost == "" {
+			continue
+		}
+
+		hostEntry := GitlabHosts{
+			Host:    cleanHost,
+			IsHTTPS: &isHTTPS,
+		}
+
+		// FirstOrCreate finds by the unique index (Host) or creates a new record
+		if err := DB.Model(&GitlabHosts{}).Where("host = ?", cleanHost).FirstOrCreate(&hostEntry).Error; err != nil {
+			klog.Errorf("Failed to seed gitlab host %s: %v", cleanHost, err)
+		} else {
+			klog.Infof("Seeded gitlab host: %s (https=%v)", cleanHost, isHTTPS)
+		}
 	}
 }

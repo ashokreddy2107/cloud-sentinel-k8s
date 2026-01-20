@@ -17,6 +17,7 @@ import {
   createResource,
   updateResource,
   useResource,
+  useResourceAnalysis,
   useResources,
 } from '@/lib/api'
 import { formatDate, translateError } from '@/lib/utils'
@@ -36,6 +37,7 @@ import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { Column, SimpleTable } from '@/components/simple-table'
 import { VolumeTable } from '@/components/volume-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { ResourceAnomalies } from '@/components/anomaly-table'
 
 interface JobStatusBadge {
   label: string
@@ -81,6 +83,8 @@ export function CronJobDetail(props: { namespace: string; name: string }) {
     error: cronJobError,
     refetch: refetchCronJob,
   } = useResource('cronjobs', name, namespace)
+
+  const { data: analysis } = useResourceAnalysis('cronjobs', name, namespace)
 
   const {
     data: jobs,
@@ -282,19 +286,19 @@ export function CronJobDetail(props: { namespace: string; name: string }) {
           },
           annotations: {
             ...(cronjob.spec.jobTemplate.metadata?.annotations || {}),
-            'kite.kubernetes.io/run-now': new Date().toISOString(),
+            'cloud-sentinel-k8s.kubernetes.io/run-now': new Date().toISOString(),
           },
           ownerReferences: cronjob.metadata?.uid
             ? [
-                {
-                  apiVersion: cronjob.apiVersion || 'batch/v1',
-                  kind: 'CronJob',
-                  name,
-                  uid: cronjob.metadata.uid,
-                  controller: true,
-                  blockOwnerDeletion: true,
-                },
-              ]
+              {
+                apiVersion: cronjob.apiVersion || 'batch/v1',
+                kind: 'CronJob',
+                name,
+                uid: cronjob.metadata.uid,
+                controller: true,
+                blockOwnerDeletion: true,
+              },
+            ]
             : undefined,
         },
         spec: jobTemplateSpec,
@@ -659,19 +663,44 @@ export function CronJobDetail(props: { namespace: string; name: string }) {
           },
           ...(volumes
             ? [
-                {
-                  value: 'volumes',
-                  label: 'Volumes',
-                  content: (
-                    <VolumeTable
-                      namespace={namespace}
-                      volumes={volumes}
-                      containers={containers}
-                    />
-                  ),
-                },
-              ]
+              {
+                value: 'volumes',
+                label: (
+                  <>
+                    Volumes{' '}
+                    {volumes && <Badge variant="secondary">{volumes.length}</Badge>}
+                  </>
+                ),
+                content: (
+                  <VolumeTable
+                    namespace={namespace}
+                    volumes={volumes}
+                    containers={containers}
+                  />
+                ),
+              },
+            ]
             : []),
+          {
+            value: 'anomalies',
+            label: (
+              <>
+                Anomalies
+                {analysis?.anomalies && analysis.anomalies.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                    {analysis.anomalies.length}
+                  </Badge>
+                )}
+              </>
+            ),
+            content: (
+              <ResourceAnomalies
+                resourceType="cronjobs"
+                name={name}
+                namespace={namespace}
+              />
+            ),
+          },
         ]}
       />
 

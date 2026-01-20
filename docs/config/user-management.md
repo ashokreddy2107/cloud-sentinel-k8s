@@ -1,6 +1,6 @@
 # User Management
 
-Kite supports multiple user management methods, combining OAuth with local password users, and working with the RBAC permission system to achieve flexible access control.
+Cloud Sentinel K8s supports multiple user management methods, combining OAuth with local password users, and working with the RBAC permission system to achieve flexible access control.
 
 ## User Types
 

@@ -51,7 +51,6 @@ export function Overview() {
 
       <ClusterStatsCards stats={overview} isLoading={isLoading} />
       {!isDismissed &&
-        user?.provider !== 'Anonymous' &&
         user?.roles?.some((role) => role.name === 'admin') && <SettingsHint />}
 
       <div className="grid grid-cols-1 gap-4 @5xl/main:grid-cols-2">

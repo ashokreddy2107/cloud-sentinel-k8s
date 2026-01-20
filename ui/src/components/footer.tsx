@@ -11,14 +11,14 @@ export function Footer() {
           </p>
           <div className="flex space-x-6 text-sm text-gray-500">
             <a
-              href="https://kite.zzde.com"
+              href="https://docs.pixelvide.cloud"
               target="_blank"
               className="hover:text-gray-700 transition-colors"
             >
               {t('login.documentation')}
             </a>
             <a
-              href="https://github.com/zxh326/kite"
+              href="https://github.com/pixelvide/cloud-sentinel-k8s"
               target="_blank"
               className="hover:text-gray-700 transition-colors"
             >

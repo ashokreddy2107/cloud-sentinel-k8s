@@ -9,9 +9,11 @@ import (
 )
 
 const (
+	AppName = "cloud-sentinel-k8s"
+
 	JWTExpirationSeconds = 24 * 60 * 60 // 24 hours
 
-	NodeTerminalPodName = "kite-node-terminal-agent"
+	NodeTerminalPodName = "cloud-sentinel-k8s-node-terminal-agent"
 
 	KubectlAnnotation = "kubectl.kubernetes.io/last-applied-configuration"
 
@@ -22,19 +24,17 @@ const (
 )
 
 var (
-	Port            = "8080"
-	JwtSecret       = "kite-default-jwt-secret-key-change-in-production"
-	EnableAnalytics = false
-	Host            = ""
-	Base            = ""
+	Port        = "8080"
+	JwtSecret   = "cloud-sentinel-k8s-default-jwt-secret-key-change-in-production"
+	Host        = ""
+	Base        = ""
+	GitlabHosts = ""
 
 	NodeTerminalImage = "busybox:latest"
 	DBType            = "sqlite"
 	DBDSN             = "dev.db"
 
-	KiteEncryptKey = "kite-default-encryption-key-change-in-production"
-
-	AnonymousUserEnabled = false
+	CloudSentinelK8sEncryptKey = "cloud-sentinel-k8s-default-encryption-key-change-in-production"
 
 	CookieExpirationSeconds = 2 * JWTExpirationSeconds // double jwt
 
@@ -53,10 +53,6 @@ func LoadEnvs() {
 		Port = port
 	}
 
-	if analytics := os.Getenv("ENABLE_ANALYTICS"); analytics == "true" {
-		EnableAnalytics = true
-	}
-
 	if nodeTerminalImage := os.Getenv("NODE_TERMINAL_IMAGE"); nodeTerminalImage != "" {
 		NodeTerminalImage = nodeTerminalImage
 	}
@@ -72,16 +68,12 @@ func LoadEnvs() {
 		DBType = dbType
 	}
 
-	if key := os.Getenv("KITE_ENCRYPT_KEY"); key != "" {
-		KiteEncryptKey = key
+	if key := os.Getenv("CLOUD_SENTINEL_K8S_ENCRYPT_KEY"); key != "" {
+		CloudSentinelK8sEncryptKey = key
 	} else {
-		klog.Warningf("KITE_ENCRYPT_KEY is not set, using default key, this is not secure for production!")
+		klog.Warningf("CLOUD_SENTINEL_K8S_ENCRYPT_KEY is not set, using default key, this is not secure for production!")
 	}
 
-	if v := os.Getenv("ANONYMOUS_USER_ENABLED"); v == "true" {
-		AnonymousUserEnabled = true
-		klog.Warningf("Anonymous user is enabled, this is not secure for production!")
-	}
 	if v := os.Getenv("HOST"); v != "" {
 		Host = v
 	}
@@ -93,11 +85,15 @@ func LoadEnvs() {
 		DisableVersionCheck = true
 	}
 
-	if v := os.Getenv("KITE_BASE"); v != "" {
+	if v := os.Getenv("CLOUD_SENTINEL_K8S_BASE"); v != "" {
 		if v[0] != '/' {
 			v = "/" + v
 		}
 		Base = strings.TrimRight(v, "/")
 		klog.Infof("Using base path: %s", Base)
+	}
+
+	if v := os.Getenv("GITLAB_HOSTS"); v != "" {
+		GitlabHosts = v
 	}
 }

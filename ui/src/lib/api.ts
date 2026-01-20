@@ -5,13 +5,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Pod } from 'kubernetes-types/core/v1'
 
 import {
-  APIKey,
   AuditLogResponse,
   Cluster,
   FetchUserListResponse,
   ImageTagInfo,
   OAuthProvider,
   OverviewData,
+  PersonalAccessToken,
   PodMetrics,
   RelatedResources,
   ResourceHistoryResponse,
@@ -22,6 +22,9 @@ import {
   ResourceUsageHistory,
   Role,
   UserItem,
+  UserGitlabConfig,
+  GitlabHost,
+  UserAWSConfig,
 } from '@/types/api'
 
 import { API_BASE_URL, apiClient } from './api-client'
@@ -243,8 +246,8 @@ export const resizePod = async (
 
 type DeepPartial<T> = T extends object
   ? {
-      [P in keyof T]?: DeepPartial<T[P]>
-    }
+    [P in keyof T]?: DeepPartial<T[P]>
+  }
   : T
 export const patchResource = async <T extends ResourceType>(
   resource: T,
@@ -375,6 +378,7 @@ export function useResourcesWatch<T extends ResourceType>(
     fieldSelector?: string
     reduce?: boolean
     enabled?: boolean
+    clusterName?: string
   }
 ) {
   const [data, setData] = useState<ResourcesItems<T> | undefined>(undefined)
@@ -391,7 +395,9 @@ export function useResourcesWatch<T extends ResourceType>(
       params.append('labelSelector', options.labelSelector)
     if (options?.fieldSelector)
       params.append('fieldSelector', options.fieldSelector)
-    const cluster = localStorage.getItem('current-cluster')
+
+    // Prioritize passed cluster name, fallback to storage (legacy/transition)
+    const cluster = options?.clusterName || localStorage.getItem('current-cluster')
     if (cluster) params.append('x-cluster-name', cluster)
     return withSubPath(
       `${API_BASE_URL}/${resource}/${ns}/watch?${params.toString()}`
@@ -402,6 +408,7 @@ export function useResourcesWatch<T extends ResourceType>(
     options?.reduce,
     options?.labelSelector,
     options?.fieldSelector,
+    options?.clusterName
   ])
 
   const disconnect = useCallback(() => {
@@ -660,6 +667,33 @@ export const useDescribe = (
   })
 }
 
+// Resource Analysis API
+import { ResourceAnalysis } from '@/types/api'
+
+export const fetchResourceAnalysis = async (
+  resourceType: string,
+  name: string,
+  namespace?: string
+): Promise<ResourceAnalysis> => {
+  const endpoint = `/${resourceType}/${namespace ?? '_all'}/${name}/analysis`
+  return fetchAPI<ResourceAnalysis>(endpoint)
+}
+
+export const useResourceAnalysis = (
+  resourceType: string,
+  name: string,
+  namespace?: string,
+  options?: { staleTime?: number; enabled?: boolean }
+) => {
+  return useQuery({
+    queryKey: [resourceType, name, namespace, 'analysis'],
+    queryFn: () => fetchResourceAnalysis(resourceType, name, namespace),
+    enabled: (options?.enabled ?? true) && !!name,
+    staleTime: options?.staleTime || 1000 * 60 * 5, // 5 minutes cache
+    retry: 0,
+  })
+}
+
 // Logs API functions
 export interface LogsResponse {
   logs: string[]
@@ -713,6 +747,7 @@ export const createLogsSSEStream = (
     timestamps?: boolean
     previous?: boolean
     sinceSeconds?: number
+    clusterName?: string
   },
   onMessage?: (data: string) => void,
   onError?: (error: Error) => void,
@@ -738,7 +773,8 @@ export const createLogsSSEStream = (
     params.append('sinceSeconds', options.sinceSeconds.toString())
   }
 
-  const currentCluster = localStorage.getItem('current-cluster')
+  // Use passed cluster name or fallback to storage
+  const currentCluster = options?.clusterName || localStorage.getItem('current-cluster')
   if (currentCluster) {
     params.append('x-cluster-name', currentCluster)
   }
@@ -929,6 +965,7 @@ export const useLogsStream = (
     sinceSeconds?: number
     enabled?: boolean
     follow?: boolean
+    clusterName?: string
   }
 ) => {
   const [logs, setLogs] = useState<string[]>([])
@@ -985,6 +1022,7 @@ export const useLogsStream = (
             timestamps: options?.timestamps,
             previous: options?.previous,
             sinceSeconds: options?.sinceSeconds,
+            clusterName: options?.clusterName,
           },
           // onMessage callback
           (logLine: string) => {
@@ -1075,6 +1113,7 @@ export const useLogsStream = (
     options?.sinceSeconds,
     options?.enabled,
     options?.follow,
+    options?.clusterName,
   ])
 
   const refetch = useCallback(() => {
@@ -1230,6 +1269,7 @@ export const useLogsWebSocket = (
     labelSelector?: string
     onNewLog?: (log: string) => void
     onClear?: () => void
+    clusterName?: string
   }
 ) => {
   // Build WebSocket URL
@@ -1257,7 +1297,7 @@ export const useLogsWebSocket = (
       params.append('labelSelector', options.labelSelector)
     }
 
-    const currentCluster = localStorage.getItem('current-cluster')
+    const currentCluster = options?.clusterName || localStorage.getItem('current-cluster')
     if (currentCluster) {
       params.append('x-cluster-name', currentCluster)
     }
@@ -1274,6 +1314,7 @@ export const useLogsWebSocket = (
     options?.sinceSeconds,
     options?.enabled,
     options?.labelSelector,
+    options?.clusterName,
   ])
 
   // WebSocket event handlers
@@ -1725,13 +1766,14 @@ export const useResourceHistory = (
   })
 }
 
-// API Key Management
+// API Key Management (Personal Access Tokens)
 export interface APIKeyCreateRequest {
   name: string
+  expiresAt?: string // YYYY-MM-DD
 }
 
-export const fetchAPIKeyList = async (): Promise<APIKey[]> => {
-  return fetchAPI<{ apiKeys: APIKey[] }>('/admin/apikeys/').then(
+export const fetchAPIKeyList = async (): Promise<PersonalAccessToken[]> => {
+  return fetchAPI<{ apiKeys: PersonalAccessToken[] }>('/settings/api-keys/').then(
     (response) => response.apiKeys
   )
 }
@@ -1746,14 +1788,17 @@ export const useAPIKeyList = (options?: { staleTime?: number }) => {
 
 export const createAPIKey = async (
   data: APIKeyCreateRequest
-): Promise<{ apiKey: APIKey }> => {
-  return await apiClient.post<{ apiKey: APIKey }>('/admin/apikeys/', data)
+): Promise<{ apiKey: PersonalAccessToken; token: string }> => {
+  return await apiClient.post<{ apiKey: PersonalAccessToken; token: string }>(
+    '/settings/api-keys/',
+    data
+  )
 }
 
 export const deleteAPIKey = async (
   id: number
 ): Promise<{ message: string }> => {
-  return await apiClient.delete<{ message: string }>(`/admin/apikeys/${id}`)
+  return await apiClient.delete<{ message: string }>(`/settings/api-keys/${id}`)
 }
 
 export const usePodFiles = (
@@ -1769,4 +1814,59 @@ export const usePodFiles = (
     enabled: options?.enabled !== false,
     staleTime: 10000, // 10 seconds cache
   })
+}
+
+// User GitLab Config API
+export const fetchUserGitlabConfigs = async (): Promise<UserGitlabConfig[]> => {
+  return fetchAPI<UserGitlabConfig[]>('/settings/gitlab-configs/')
+}
+
+export const fetchGitlabHosts = async (): Promise<GitlabHost[]> => {
+  return fetchAPI<GitlabHost[]>('/settings/gitlab-hosts')
+}
+
+export const useUserGitlabConfigs = () => {
+  return useQuery({
+    queryKey: ['user-gitlab-configs'],
+    queryFn: fetchUserGitlabConfigs,
+  })
+}
+
+export const useGitlabHosts = () => {
+  return useQuery({
+    queryKey: ['gitlab-hosts'],
+    queryFn: fetchGitlabHosts,
+  })
+}
+
+export const upsertUserGitlabConfig = async (
+  data: { gitlab_host_id: number; token: string }
+): Promise<UserGitlabConfig> => {
+  return await apiClient.post<UserGitlabConfig>('/settings/gitlab-configs/', data)
+}
+
+export const deleteUserGitlabConfig = async (
+  id: number
+): Promise<void> => {
+  return await apiClient.delete(`/settings/gitlab-configs/${id}`)
+}
+
+export const validateUserGitlabConfig = async (
+  id: number
+): Promise<{ message: string; config: UserGitlabConfig }> => {
+  return await apiClient.post<{ message: string; config: UserGitlabConfig }>(
+    `/settings/gitlab-configs/${id}/validate`,
+    {}
+  )
+}
+
+// User AWS Config API
+export const fetchUserAWSConfig = async (): Promise<UserAWSConfig> => {
+  return fetchAPI<UserAWSConfig>('/settings/aws-config/')
+}
+
+export const updateUserAWSConfig = async (data: {
+  credentials_content: string
+}): Promise<UserAWSConfig> => {
+  return await apiClient.post<UserAWSConfig>('/settings/aws-config/', data)
 }

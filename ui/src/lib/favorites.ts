@@ -1,6 +1,6 @@
 import { SearchResult } from '@/lib/api'
 
-const FAVORITES_STORAGE_KEY = 'kite-favorites'
+const FAVORITES_STORAGE_KEY = 'cloud-sentinel-k8s-favorites'
 
 /**
  * Get favorites from localStorage

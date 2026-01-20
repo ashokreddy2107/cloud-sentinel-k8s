@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/model"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
 )
 
 // ListRoles returns all roles with assignments

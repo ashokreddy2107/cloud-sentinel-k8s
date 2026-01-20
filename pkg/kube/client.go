@@ -47,14 +47,20 @@ type K8sClient struct {
 	cancel context.CancelFunc
 }
 
-// NewClient creates a K8sClient from a rest.Config
-func NewClient(config *rest.Config) (*K8sClient, error) {
-	clientset, err := kubernetes.NewForConfig(config)
+// ClientOptions holds configuration for creating a K8sClient
+type ClientOptions struct {
+	Config       *rest.Config
+	DisableCache bool
+}
+
+// NewClient creates a K8sClient from ClientOptions
+func NewClient(opts ClientOptions) (*K8sClient, error) {
+	clientset, err := kubernetes.NewForConfig(opts.Config)
 	if err != nil {
 		return nil, err
 	}
 
-	metricsClient, err := metricsclient.NewForConfig(config)
+	metricsClient, err := metricsclient.NewForConfig(opts.Config)
 	if err != nil {
 		klog.Warningf("failed to create metrics client: %v", err)
 	}
@@ -62,8 +68,10 @@ func NewClient(config *rest.Config) (*K8sClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var c client.Client
-	if os.Getenv("DISABLE_CACHE") == "true" {
-		c, err = client.New(config, client.Options{
+	disableCache := opts.DisableCache || os.Getenv("DISABLE_CACHE") == "true"
+
+	if disableCache {
+		c, err = client.New(opts.Config, client.Options{
 			Scheme: runtimeScheme,
 		})
 		if err != nil {
@@ -71,7 +79,7 @@ func NewClient(config *rest.Config) (*K8sClient, error) {
 			return nil, fmt.Errorf("failed to create client: %w", err)
 		}
 	} else {
-		mgr, err := manager.New(config, manager.Options{
+		mgr, err := manager.New(opts.Config, manager.Options{
 			Scheme:         runtimeScheme,
 			LeaderElection: false,
 			Metrics: metricsserver.Options{
@@ -113,7 +121,7 @@ func NewClient(config *rest.Config) (*K8sClient, error) {
 	return &K8sClient{
 		Client:        c,
 		ClientSet:     clientset,
-		Configuration: config,
+		Configuration: opts.Config,
 		MetricsClient: metricsClient,
 		cancel:        cancel,
 	}, nil

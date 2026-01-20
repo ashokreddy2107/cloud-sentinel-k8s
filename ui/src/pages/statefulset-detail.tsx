@@ -14,7 +14,7 @@ import { Container } from 'kubernetes-types/core/v1'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { updateResource, useResource, useResourcesWatch } from '@/lib/api'
+import { updateResource, useResource, useResourceAnalysis, useResourcesWatch } from '@/lib/api'
 import { formatDate, translateError } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,7 @@ import { ResourceHistoryTable } from '@/components/resource-history-table'
 import { Terminal } from '@/components/terminal'
 import { VolumeTable } from '@/components/volume-table'
 import { YamlEditor } from '@/components/yaml-editor'
+import { ResourceAnomalies } from '@/components/anomaly-table'
 
 export function StatefulSetDetail(props: { namespace: string; name: string }) {
   const { namespace, name } = props
@@ -66,10 +67,12 @@ export function StatefulSetDetail(props: { namespace: string; name: string }) {
     refreshInterval,
   })
 
+  const { data: analysis } = useResourceAnalysis('statefulsets', name, namespace)
+
   const labelSelector = statefulset?.spec?.selector.matchLabels
     ? Object.entries(statefulset.spec.selector.matchLabels)
-        .map(([key, value]) => `${key}=${value}`)
-        .join(',')
+      .map(([key, value]) => `${key}=${value}`)
+      .join(',')
     : undefined
   const { data: relatedPods, isLoading: isLoadingPods } = useResourcesWatch(
     'pods',
@@ -184,7 +187,7 @@ export function StatefulSetDetail(props: { namespace: string; name: string }) {
 
       // Add restart annotation to trigger pod restart
       updatedStatefulSet.spec.template.metadata.annotations[
-        'kite.kubernetes.io/restartedAt'
+        'cloud-sentinel-k8s.kubernetes.io/restartedAt'
       ] = new Date().toISOString()
 
       await updateResource('statefulsets', name, namespace, updatedStatefulSet)
@@ -566,83 +569,83 @@ export function StatefulSetDetail(props: { namespace: string; name: string }) {
           },
           ...(relatedPods
             ? [
-                {
-                  value: 'pods',
-                  label: (
-                    <>
-                      Pods{' '}
-                      {relatedPods && (
-                        <Badge variant="secondary">{relatedPods.length}</Badge>
-                      )}
-                    </>
-                  ),
-                  content: (
-                    <PodTable
+              {
+                value: 'pods',
+                label: (
+                  <>
+                    Pods{' '}
+                    {relatedPods && (
+                      <Badge variant="secondary">{relatedPods.length}</Badge>
+                    )}
+                  </>
+                ),
+                content: (
+                  <PodTable
+                    pods={relatedPods}
+                    isLoading={isLoadingPods}
+                    labelSelector={labelSelector}
+                  />
+                ),
+              },
+              {
+                value: 'logs',
+                label: 'Logs',
+                content: (
+                  <div className="space-y-6">
+                    <LogViewer
+                      namespace={namespace}
                       pods={relatedPods}
-                      isLoading={isLoadingPods}
+                      containers={spec?.template.spec?.containers}
+                      initContainers={spec?.template.spec?.initContainers}
                       labelSelector={labelSelector}
                     />
-                  ),
-                },
-                {
-                  value: 'logs',
-                  label: 'Logs',
-                  content: (
-                    <div className="space-y-6">
-                      <LogViewer
+                  </div>
+                ),
+              },
+              {
+                value: 'terminal',
+                label: 'Terminal',
+                content: (
+                  <div className="space-y-6">
+                    {relatedPods && relatedPods.length > 0 && (
+                      <Terminal
                         namespace={namespace}
                         pods={relatedPods}
                         containers={spec?.template.spec?.containers}
                         initContainers={spec?.template.spec?.initContainers}
-                        labelSelector={labelSelector}
                       />
-                    </div>
-                  ),
-                },
-                {
-                  value: 'terminal',
-                  label: 'Terminal',
-                  content: (
-                    <div className="space-y-6">
-                      {relatedPods && relatedPods.length > 0 && (
-                        <Terminal
-                          namespace={namespace}
-                          pods={relatedPods}
-                          containers={spec?.template.spec?.containers}
-                          initContainers={spec?.template.spec?.initContainers}
-                        />
-                      )}
-                    </div>
-                  ),
-                },
-              ]
+                    )}
+                  </div>
+                ),
+              },
+            ]
             : []),
           ...(spec?.template?.spec?.volumes
             ? [
-                {
-                  value: 'volumes',
-                  label: (
-                    <>
-                      Volumes
-                      {spec.template.spec.volumes && (
-                        <Badge variant="secondary">
-                          {spec.template.spec.volumes.length}
-                        </Badge>
-                      )}
-                    </>
-                  ),
-                  content: (
-                    <div className="space-y-6">
-                      <VolumeTable
-                        namespace={namespace}
-                        volumes={spec.template.spec?.volumes}
-                        containers={spec.template.spec?.containers}
-                        isLoading={isLoadingStatefulSet}
-                      />
-                    </div>
-                  ),
-                },
-              ]
+              {
+                value: 'volumes',
+                label: (
+                  <>
+                    Volumes
+                    {spec.template.spec.volumes && (
+                      <Badge variant="secondary">
+                        {spec.template.spec.volumes.length}
+                      </Badge>
+                    )}
+                  </>
+                ),
+                content: (
+                  <div className="space-y-6">
+                    <VolumeTable
+                      namespace={namespace}
+                      volumes={spec.template.spec?.volumes}
+                      containers={spec.template.spec?.containers}
+                      isLoading={isLoadingStatefulSet}
+                    />
+                  </div>
+                ),
+              },
+            ]
             : []),
           {
             value: 'Related',
@@ -689,6 +692,26 @@ export function StatefulSetDetail(props: { namespace: string; name: string }) {
                 initContainers={spec?.template.spec?.initContainers}
                 defaultQueryName={relatedPods?.[0]?.metadata?.generateName}
                 labelSelector={labelSelector}
+              />
+            ),
+          },
+          {
+            value: 'anomalies',
+            label: (
+              <>
+                Anomalies
+                {analysis?.anomalies && analysis.anomalies.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                    {analysis.anomalies.length}
+                  </Badge>
+                )}
+              </>
+            ),
+            content: (
+              <ResourceAnomalies
+                resourceType="statefulsets"
+                name={name}
+                namespace={namespace}
               />
             ),
           },

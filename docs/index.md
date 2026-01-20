@@ -3,22 +3,22 @@
 layout: home
 
 hero:
-  name: "Kite"
+  name: "Cloud Sentinel K8s"
   text: "A modern, intuitive Kubernetes dashboard"
   tagline: "Lightweight, powerful cluster management and monitoring tool"
   image:
     src: /logo.svg
-    alt: Kite Logo
+    alt: Cloud Sentinel K8s Logo
   actions:
     - theme: brand
       text: Get Started
       link: /guide/
     - theme: alt
       text: View on GitHub
-      link: https://github.com/zxh326/kite
+      link: https://github.com/pixelvide/cloud-sentinel-k8s
     - theme: alt
       text: View Demo
-      link: https://kite-demo.zzde.me
+      link: https://cloud-sentinel-k8s-demo.pixelvide.cloud
 
 features:
   - icon: 🎯

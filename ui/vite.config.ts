@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { dynamicBase } from 'vite-plugin-dynamic-base'
 
-const devBase = process.env.KITE_BASE || ''
+const devBase = process.env.CLOUD_SENTINEL_K8S_BASE || ''
 
 export default defineConfig({
   base: process.env.NODE_ENV === 'production' ? '/__dynamic_base__/' : devBase,
@@ -16,7 +16,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  envPrefix: ['VITE_', 'KITE_'],
+  envPrefix: ['VITE_', 'CLOUD_SENTINEL_K8S_'],
   build: {
     outDir: '../static',
     emptyOutDir: true,

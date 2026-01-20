@@ -3,7 +3,7 @@ package utils
 import (
 	"fmt"
 
-	"github.com/zxh326/kite/pkg/common"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/common"
 	corev1 "k8s.io/api/core/v1"
 )
 

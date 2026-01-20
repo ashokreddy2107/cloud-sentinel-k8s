@@ -2,7 +2,8 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/zxh326/kite/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/cluster"
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
 )
 
 const (
@@ -24,7 +25,15 @@ func ClusterMiddleware(cm *cluster.ClusterManager) gin.HandlerFunc {
 				clusterName, _ = c.Cookie(ClusterNameHeader)
 			}
 		}
-		cluster, err := cm.GetClientSet(clusterName)
+
+		var user *model.User
+		if u, exists := c.Get("user"); exists {
+			if userModel, ok := u.(model.User); ok {
+				user = &userModel
+			}
+		}
+
+		cluster, err := cm.GetClientSet(clusterName, user)
 		if err != nil {
 			c.JSON(404, gin.H{"error": err.Error()})
 			c.Abort()

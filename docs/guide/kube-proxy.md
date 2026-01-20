@@ -4,7 +4,7 @@ outline: deep
 
 # Kube Proxy
 
-Kite has a built-in kubectl Proxy feature that allows you to access Pods or Services directly through Kite without running `kubectl port-forward` locally.
+Cloud Sentinel K8s has a built-in kubectl Proxy feature that allows you to access Pods or Services directly through Cloud Sentinel K8s without running `kubectl port-forward` locally.
 
 ## How to Use
 

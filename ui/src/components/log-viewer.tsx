@@ -22,6 +22,7 @@ import {
   parseAnsi,
 } from '@/lib/ansi-parser'
 import { useLogsWebSocket } from '@/lib/api'
+import { useCluster } from '@/hooks/use-cluster'
 import { toSimpleContainer } from '@/lib/k8s'
 import { Button } from '@/components/ui/button'
 import {
@@ -71,6 +72,7 @@ export function LogViewer({
   onClose,
   labelSelector,
 }: LogViewerProps) {
+  const { currentCluster } = useCluster()
   const [logTheme, setLogTheme] = useState<TerminalTheme>(() => {
     const saved = localStorage.getItem('log-viewer-theme')
     return (saved as TerminalTheme) || 'classic'
@@ -302,6 +304,7 @@ export function LogViewer({
       labelSelector,
       onNewLog: appendLog,
       onClear: cleanLog,
+      clusterName: currentCluster || undefined,
     }),
     [
       selectedContainer,
@@ -510,7 +513,7 @@ export function LogViewer({
               <PodSelector
                 pods={pods.sort((a, b) =>
                   (a.metadata?.creationTimestamp || 0) >
-                  (b.metadata?.creationTimestamp || 0)
+                    (b.metadata?.creationTimestamp || 0)
                     ? -1
                     : 1
                 )}
@@ -813,20 +816,18 @@ export function LogViewer({
         />
         {showScrollToBottom && (
           <div
-            className={`absolute bottom-4 right-4 shadow-lg z-10  ml-auto w-fit animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ${
-              logTheme === 'github'
+            className={`absolute bottom-4 right-4 shadow-lg z-10  ml-auto w-fit animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ${logTheme === 'github'
                 ? 'bg-white/90 text-gray-600 border border-gray-200 shadow-sm'
                 : 'bg-gray-800/90 text-gray-300 border border-gray-600 shadow-sm'
-            } px-3 py-1.5 text-xs rounded-full backdrop-blur-sm`}
+              } px-3 py-1.5 text-xs rounded-full backdrop-blur-sm`}
           >
             <Button
               size="sm"
               variant="ghost"
-              className={`h-auto p-0 text-xs font-normal ${
-                logTheme === 'github'
+              className={`h-auto p-0 text-xs font-normal ${logTheme === 'github'
                   ? 'text-gray-600 hover:text-gray-800 hover:bg-gray-100/70'
                   : 'text-gray-300 hover:text-white hover:bg-gray-700/70'
-              }`}
+                }`}
               onClick={scrollToBottom}
             >
               ↓ {t('log.jumpToBottom', 'Jump to bottom')}
