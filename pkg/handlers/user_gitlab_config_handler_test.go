@@ -16,10 +16,16 @@ import (
 )
 
 func setupTestDB() {
-	db, _ := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect database: " + err.Error())
+	}
 	model.DB = db
 	model.DB.Exec("PRAGMA foreign_keys = ON")
-	model.DB.AutoMigrate(&model.User{}, &model.GitlabHosts{}, &model.UserGitlabConfig{})
+	err = model.DB.AutoMigrate(&model.User{}, &model.GitlabHosts{}, &model.UserGitlabConfig{})
+	if err != nil {
+		panic("failed to migrate database: " + err.Error())
+	}
 }
 
 func setupRouter() *gin.Engine {
@@ -27,7 +33,10 @@ func setupRouter() *gin.Engine {
 	r.Use(func(c *gin.Context) {
 		// Mock auth middleware
 		user := model.User{Username: "testuser"}
-		model.DB.FirstOrCreate(&user, model.User{Username: "testuser"})
+		err := model.DB.FirstOrCreate(&user, model.User{Username: "testuser"}).Error
+		if err != nil {
+			panic("failed to create test user: " + err.Error())
+		}
 		c.Set("user", user)
 		c.Next()
 	})
@@ -49,7 +58,8 @@ func TestUserGitlabConfigHandlers(t *testing.T) {
 
 	// Seed Host
 	host := model.GitlabHosts{Host: "gitlab.com"}
-	model.DB.Create(&host)
+	err := model.DB.Create(&host).Error
+	assert.NoError(t, err)
 
 	// Create (Upsert - New)
 	t.Run("Create (Upsert)", func(t *testing.T) {
@@ -57,33 +67,39 @@ func TestUserGitlabConfigHandlers(t *testing.T) {
 			GitlabHostID: host.ID,
 			Token:        "test-token",
 		}
-		body, _ := json.Marshal(reqBody)
-		req, _ := http.NewRequest("POST", "/api/v1/settings/gitlab-configs/", bytes.NewBuffer(body))
+		body, err := json.Marshal(reqBody)
+		assert.NoError(t, err)
+		req, err := http.NewRequest("POST", "/api/v1/settings/gitlab-configs/", bytes.NewBuffer(body))
+		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
 		var resp model.UserGitlabConfig
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NoError(t, err)
 		assert.Equal(t, "test-token", resp.Token)
 		assert.Equal(t, host.ID, resp.GitlabHostID)
 	})
 
 	// List
 	t.Run("List", func(t *testing.T) {
-		req, _ := http.NewRequest("GET", "/api/v1/settings/gitlab-configs/", nil)
+		req, err := http.NewRequest("GET", "/api/v1/settings/gitlab-configs/", nil)
+		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp []model.UserGitlabConfig
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NoError(t, err)
 		assert.NotEmpty(t, resp)
 	})
 
 	// Get ID of created config
 	var config model.UserGitlabConfig
-	model.DB.First(&config)
+	err = model.DB.First(&config).Error
+	assert.NoError(t, err)
 
 	// Update (Upsert - Existing)
 	t.Run("Update (Upsert)", func(t *testing.T) {
@@ -91,14 +107,17 @@ func TestUserGitlabConfigHandlers(t *testing.T) {
 			GitlabHostID: host.ID,
 			Token:        "updated-token",
 		}
-		body, _ := json.Marshal(reqBody)
-		req, _ := http.NewRequest("POST", "/api/v1/settings/gitlab-configs/", bytes.NewBuffer(body))
+		body, err := json.Marshal(reqBody)
+		assert.NoError(t, err)
+		req, err := http.NewRequest("POST", "/api/v1/settings/gitlab-configs/", bytes.NewBuffer(body))
+		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var resp model.UserGitlabConfig
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NoError(t, err)
 		assert.Equal(t, "updated-token", resp.Token)
 		assert.Equal(t, config.ID, resp.ID) // should be same ID
 	})
@@ -141,7 +160,8 @@ func TestUserGitlabConfigHandlers(t *testing.T) {
 
 	// Delete
 	t.Run("Delete", func(t *testing.T) {
-		req, _ := http.NewRequest("DELETE", "/api/v1/settings/gitlab-configs/"+strconv.Itoa(int(config.ID)), nil)
+		req, err := http.NewRequest("DELETE", "/api/v1/settings/gitlab-configs/"+strconv.Itoa(int(config.ID)), nil)
+		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 

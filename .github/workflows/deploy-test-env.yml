@@ -18,7 +18,7 @@ jobs:
   deploy:
     name: Deploy Test Env
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.repository_owner == "pixelvide" }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.repository_owner == 'pixelvide' }}
 
     steps:
       - name: restart cloud-sentinel-k8s deployment

@@ -4,23 +4,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sync"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type TopologySpreadAnalyzer struct {
-	mu    sync.Mutex
-	cache map[string]topologyCacheEntry
-}
-
-type topologyCacheEntry struct {
-	isTopologyAware bool
-	lastChecked     time.Time
-}
+type TopologySpreadAnalyzer struct{}
 
 func (t *TopologySpreadAnalyzer) Name() string { return "TopologySpreadConstraints" }
 
