@@ -105,7 +105,7 @@ export const ClusterProvider: React.FC<{ children: React.ReactNode }> = ({
         document.cookie = `x-cluster-name=${currentCluster}; path=/`
       }
     }
-  }, [clusters, currentCluster, storedCluster])
+  }, [clusters, currentCluster, storedCluster, navigate, urlCluster])
 
   // If admin is logged in and no clusters are found, redirect to settings
   useEffect(() => {

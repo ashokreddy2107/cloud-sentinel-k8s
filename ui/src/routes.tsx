@@ -1,8 +1,9 @@
-import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 
 import App from './App'
 import { InitCheckRoute } from './components/init-check-route'
 import { ProtectedRoute } from './components/protected-route'
+import { ClusterRedirector, RootRedirector } from './components/route-redirectors'
 import { getSubPath } from './lib/subpath'
 import { CRListPage } from './pages/cr-list-page'
 import { InitializationPage } from './pages/initialization'
@@ -11,31 +12,8 @@ import { Overview } from './pages/overview'
 import { ResourceDetail } from './pages/resource-detail'
 import { ResourceList } from './pages/resource-list'
 import { SettingsPage } from './pages/settings'
-import { useCluster } from './hooks/use-cluster'
 
 const subPath = getSubPath()
-
-function RootRedirector() {
-  const { currentCluster } = useCluster()
-  // Wait for cluster to be resolved
-  if (!currentCluster) {
-    return null // generic loading or let the App's loading state handle it
-  }
-  return <Navigate to={`/c/${currentCluster}/dashboard`} replace />
-}
-
-function ClusterRedirector() {
-  const { currentCluster } = useCluster()
-  const location = useLocation()
-
-  if (!currentCluster) {
-    return null
-  }
-
-  // Preserve the current path but prepend cluster
-  // e.g. /pods -> /c/dev/pods
-  return <Navigate to={`/c/${currentCluster}${location.pathname}`} replace />
-}
 
 export const router = createBrowserRouter(
   [

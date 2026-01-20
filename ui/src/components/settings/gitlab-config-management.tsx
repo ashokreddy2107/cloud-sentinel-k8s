@@ -88,7 +88,7 @@ export function GitlabConfigManagement() {
             setEditingConfig(null)
             form.reset()
             queryClient.invalidateQueries({ queryKey: ['user-gitlab-configs'] })
-        } catch (_error) {
+        } catch {
             toast.error(t('settings.gitlab.error', 'Failed to save configuration'))
         }
     }
@@ -100,7 +100,7 @@ export function GitlabConfigManagement() {
             toast.success(t('settings.gitlab.deleted', 'Configuration deleted'))
             setDeleteConfigId(null)
             queryClient.invalidateQueries({ queryKey: ['user-gitlab-configs'] })
-        } catch (_error) {
+        } catch {
             toast.error(t('settings.gitlab.deleteError', 'Failed to delete configuration'))
         }
     }
@@ -111,7 +111,7 @@ export function GitlabConfigManagement() {
             await validateUserGitlabConfig(id)
             toast.success(t('settings.gitlab.valid', 'Configuration is valid'))
             queryClient.invalidateQueries({ queryKey: ['user-gitlab-configs'] })
-        } catch (_error) {
+        } catch {
             toast.error(t('settings.gitlab.invalid', 'Configuration is invalid'))
         } finally {
             setIsValidating(null)

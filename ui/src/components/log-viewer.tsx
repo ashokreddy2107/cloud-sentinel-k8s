@@ -315,6 +315,7 @@ export function LogViewer({
       labelSelector,
       appendLog,
       cleanLog,
+      currentCluster,
     ]
   )
 
@@ -817,16 +818,16 @@ export function LogViewer({
         {showScrollToBottom && (
           <div
             className={`absolute bottom-4 right-4 shadow-lg z-10  ml-auto w-fit animate-in fade-in-0 slide-in-from-bottom-2 duration-300 ${logTheme === 'github'
-                ? 'bg-white/90 text-gray-600 border border-gray-200 shadow-sm'
-                : 'bg-gray-800/90 text-gray-300 border border-gray-600 shadow-sm'
+              ? 'bg-white/90 text-gray-600 border border-gray-200 shadow-sm'
+              : 'bg-gray-800/90 text-gray-300 border border-gray-600 shadow-sm'
               } px-3 py-1.5 text-xs rounded-full backdrop-blur-sm`}
           >
             <Button
               size="sm"
               variant="ghost"
               className={`h-auto p-0 text-xs font-normal ${logTheme === 'github'
-                  ? 'text-gray-600 hover:text-gray-800 hover:bg-gray-100/70'
-                  : 'text-gray-300 hover:text-white hover:bg-gray-700/70'
+                ? 'text-gray-600 hover:text-gray-800 hover:bg-gray-100/70'
+                : 'text-gray-300 hover:text-white hover:bg-gray-700/70'
                 }`}
               onClick={scrollToBottom}
             >
