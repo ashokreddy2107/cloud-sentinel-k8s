@@ -1,0 +1,15 @@
+{
+    "packages": {
+        ".": {
+            "release-type": "simple",
+            "extra-files": [
+                "version.txt",
+                {
+                    "type": "json",
+                    "path": "ui/package.json",
+                    "jsonpath": "$.version"
+                }
+            ]
+        }
+    }
+}
