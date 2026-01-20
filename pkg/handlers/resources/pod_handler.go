@@ -529,15 +529,9 @@ func (h *PodHandler) Watch(c *gin.Context) {
 	}
 
 	reduce := c.DefaultQuery("reduce", "false") == "true"
-	labelSelector := c.Query("labelSelector")
-	fieldSelector := c.Query("fieldSelector")
-
-	listOpts := metav1.ListOptions{}
-	if labelSelector != "" {
-		listOpts.LabelSelector = labelSelector
-	}
-	if fieldSelector != "" {
-		listOpts.FieldSelector = fieldSelector
+	listOpts := metav1.ListOptions{
+		LabelSelector: c.Query("labelSelector"),
+		FieldSelector: c.Query("fieldSelector"),
 	}
 
 	ns := ""
@@ -569,33 +563,7 @@ func (h *PodHandler) Watch(c *gin.Context) {
 			_ = writeSSE(c, "close", gin.H{"message": "connection closed"})
 			return
 		case <-ticker.C:
-			metricsMap, _ = h.ListMetrics(c)
-			for _, metrics := range metricsMap {
-				if !rbac.CanAccessNamespace(user, cs.Name, metrics.Namespace) {
-					continue
-				}
-				if len(namespaces) > 1 {
-					found := false
-					for _, targetNs := range namespaces {
-						if metrics.Namespace == targetNs {
-							found = true
-							break
-						}
-					}
-					if !found {
-						continue
-					}
-				}
-
-				pod, err := h.GetResource(c, metrics.Namespace, metrics.Name)
-				if err != nil {
-					klog.Warningf("Failed to get pod: %v", err)
-					continue
-				}
-				p := pod.(*corev1.Pod)
-				obj := &PodWithMetrics{Pod: p, Metrics: GetPodMetrics(metricsMap, p)}
-				_ = writeSSE(c, "modified", obj)
-			}
+			h.handleWatchTick(c, cs, user, namespaces, &metricsMap)
 			_, _ = fmt.Fprintf(c.Writer, ": ping\n\n") // comment line per SSE
 			flusher.Flush()
 		case event, ok := <-watchInterface.ResultChan():
@@ -603,62 +571,89 @@ func (h *PodHandler) Watch(c *gin.Context) {
 				_ = writeSSE(c, "close", gin.H{"message": "watch channel closed"})
 				return
 			}
-
-			pod, ok := event.Object.(*corev1.Pod)
-			if !ok || pod == nil {
-				continue
-			}
-
-			if !rbac.CanAccessNamespace(user, cs.Name, pod.Namespace) {
-				continue
-			}
-
-			if len(namespaces) > 1 {
-				found := false
-				for _, targetNs := range namespaces {
-					if pod.Namespace == targetNs {
-						found = true
-						break
-					}
-				}
-				if !found {
-					continue
-				}
-			}
-
-			obj := &PodWithMetrics{Pod: pod}
-			if reduce {
-				obj.Pod = pod.DeepCopy()
-				obj.ObjectMeta = metav1.ObjectMeta{
-					Name:              pod.Name,
-					Namespace:         pod.Namespace,
-					CreationTimestamp: pod.CreationTimestamp,
-					DeletionTimestamp: pod.DeletionTimestamp,
-					GenerateName:      pod.GenerateName,
-				}
-				obj.Spec = corev1.PodSpec{
-					NodeName: pod.Spec.NodeName,
-					InitContainers: lo.Map(pod.Spec.InitContainers, func(c corev1.Container, _ int) corev1.Container {
-						return corev1.Container{Name: c.Name, Image: c.Image, RestartPolicy: c.RestartPolicy}
-					}),
-					Containers: lo.Map(pod.Spec.Containers, func(c corev1.Container, _ int) corev1.Container {
-						return corev1.Container{Name: c.Name, Image: c.Image, RestartPolicy: c.RestartPolicy}
-					}),
-				}
-			}
-			obj.Metrics = GetPodMetrics(metricsMap, pod)
-			switch event.Type {
-			case watch.Added:
-				_ = writeSSE(c, "added", obj)
-			case watch.Modified:
-				_ = writeSSE(c, "modified", obj)
-			case watch.Deleted:
-				_ = writeSSE(c, "deleted", obj)
-			case watch.Error:
-				_ = writeSSE(c, "error", gin.H{"error": "watch error"})
-			default:
-				// ignore
-			}
+			h.handleWatchEvent(c, cs, user, namespaces, reduce, metricsMap, event)
 		}
 	}
+}
+
+func (h *PodHandler) handleWatchTick(c *gin.Context, cs *cluster.ClientSet, user model.User, namespaces []string, metricsMap *map[string]metricsv1.PodMetrics) {
+	newMetrics, _ := h.ListMetrics(c)
+	*metricsMap = newMetrics
+	for _, metrics := range newMetrics {
+		if !h.shouldProcessPod(user, cs.Name, metrics.Namespace, namespaces) {
+			continue
+		}
+
+		pod, err := h.GetResource(c, metrics.Namespace, metrics.Name)
+		if err != nil {
+			klog.Warningf("Failed to get pod: %v", err)
+			continue
+		}
+		p := pod.(*corev1.Pod)
+		obj := &PodWithMetrics{Pod: p, Metrics: GetPodMetrics(newMetrics, p)}
+		_ = writeSSE(c, "modified", obj)
+	}
+}
+
+func (h *PodHandler) handleWatchEvent(c *gin.Context, cs *cluster.ClientSet, user model.User, namespaces []string, reduce bool, metricsMap map[string]metricsv1.PodMetrics, event watch.Event) {
+	pod, ok := event.Object.(*corev1.Pod)
+	if !ok || pod == nil {
+		return
+	}
+
+	if !h.shouldProcessPod(user, cs.Name, pod.Namespace, namespaces) {
+		return
+	}
+
+	obj := &PodWithMetrics{Pod: pod}
+	if reduce {
+		obj.Pod = pod.DeepCopy()
+		obj.ObjectMeta = metav1.ObjectMeta{
+			Name:              pod.Name,
+			Namespace:         pod.Namespace,
+			CreationTimestamp: pod.CreationTimestamp,
+			DeletionTimestamp: pod.DeletionTimestamp,
+			GenerateName:      pod.GenerateName,
+		}
+		obj.Spec = corev1.PodSpec{
+			NodeName: pod.Spec.NodeName,
+			InitContainers: lo.Map(pod.Spec.InitContainers, func(c corev1.Container, _ int) corev1.Container {
+				return corev1.Container{Name: c.Name, Image: c.Image, RestartPolicy: c.RestartPolicy}
+			}),
+			Containers: lo.Map(pod.Spec.Containers, func(c corev1.Container, _ int) corev1.Container {
+				return corev1.Container{Name: c.Name, Image: c.Image, RestartPolicy: c.RestartPolicy}
+			}),
+		}
+	}
+	obj.Metrics = GetPodMetrics(metricsMap, pod)
+	switch event.Type {
+	case watch.Added:
+		_ = writeSSE(c, "added", obj)
+	case watch.Modified:
+		_ = writeSSE(c, "modified", obj)
+	case watch.Deleted:
+		_ = writeSSE(c, "deleted", obj)
+	case watch.Error:
+		_ = writeSSE(c, "error", gin.H{"error": "watch error"})
+	}
+}
+
+func (h *PodHandler) shouldProcessPod(user model.User, clusterName, podNamespace string, targetNamespaces []string) bool {
+	if !rbac.CanAccessNamespace(user, clusterName, podNamespace) {
+		return false
+	}
+
+	if len(targetNamespaces) > 1 {
+		found := false
+		for _, targetNs := range targetNamespaces {
+			if podNamespace == targetNs {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }

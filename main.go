@@ -123,7 +123,6 @@ func setupAPIRouter(r *gin.RouterGroup, cm *cluster.ClusterManager, authHandler 
 			clusterAPI.POST("/import", cm.ImportClustersFromKubeconfig)
 			clusterAPI.PUT("/:id", cm.UpdateCluster)
 			clusterAPI.DELETE("/:id", cm.DeleteCluster)
-
 		}
 
 		rbacAPI := adminAPI.Group("/roles")

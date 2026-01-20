@@ -15,7 +15,10 @@ func setupTestDB() {
 		panic(err)
 	}
 	DB = db
-	DB.AutoMigrate(&GitlabHosts{})
+	err = DB.AutoMigrate(&GitlabHosts{})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func boolPtr(b bool) *bool {
@@ -80,7 +83,8 @@ func TestSeedGitlabHosts(t *testing.T) {
 			// Clear table
 			DB.Exec("DELETE FROM gitlab_hosts")
 
-			os.Setenv("GITLAB_HOSTS", tt.envValue)
+			err := os.Setenv("GITLAB_HOSTS", tt.envValue)
+			assert.NoError(t, err)
 			seedGitlabHosts()
 
 			var hosts []GitlabHosts

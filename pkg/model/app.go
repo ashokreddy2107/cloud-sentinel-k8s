@@ -114,10 +114,7 @@ func CheckOrInitializeUserAccess(userID uint) (bool, error) {
 
 	// Not exists: Get DefaultUserAccess setting
 	config, err := GetAppConfig(appID, DefaultUserAccessKey)
-	defaultAccess := false
-	if err == nil && config.Value == "true" {
-		defaultAccess = true
-	}
+	defaultAccess := err == nil && config.Value == "true"
 
 	// Create AppUser with default access
 	newAppUser := AppUser{
