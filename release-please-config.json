@@ -13,16 +13,15 @@
                     "jsonpath": "$.version"
                 },
                 {
-                    "type": "yaml",
-                    "path": "charts/cloud-sentinel-k8s/values.yaml",
-                    "jsonpath": "$.image.tag"
+                    "type": "simple",
+                    "path": "charts/cloud-sentinel-k8s/values.yaml"
                 },
                 {
-                    "type": "yaml",
-                    "path": "charts/cloud-sentinel-k8s/Chart.yaml",
-                    "jsonpath": "$.version"
+                    "type": "simple",
+                    "path": "charts/cloud-sentinel-k8s/Chart.yaml"
                 },
-                "README.md"
+                "README.md",
+                "charts/cloud-sentinel-k8s/README.md"
             ]
         }
     }
