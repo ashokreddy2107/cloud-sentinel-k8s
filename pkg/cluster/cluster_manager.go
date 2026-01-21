@@ -760,6 +760,14 @@ func NewClusterManager() (*ClusterManager, error) {
 }
 
 func (cm *ClusterManager) UpdateUserActivity(userID uint) {
+	cm.activeUsersMu.RLock()
+	lastActive, exists := cm.activeUsers[userID]
+	cm.activeUsersMu.RUnlock()
+
+	if exists && time.Since(lastActive) < 5*time.Minute {
+		return
+	}
+
 	cm.activeUsersMu.Lock()
 	defer cm.activeUsersMu.Unlock()
 	cm.activeUsers[userID] = time.Now()
