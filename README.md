@@ -82,7 +82,7 @@ For detailed instructions, please refer to the [documentation](https://pixelvide
 To run Cloud Sentinel K8s using Docker, you can use the pre-built image:
 
 ```bash
-docker run --rm -p 8080:8080 ghcr.io/pixelvide/cloud-sentinel-k8s:0.11.0
+docker run --rm -p 8080:8080 ghcr.io/pixelvide/cloud-sentinel-k8s:0.12.0
 ```
 
 ### Deploy in Kubernetes
@@ -109,7 +109,7 @@ docker run --rm -p 8080:8080 ghcr.io/pixelvide/cloud-sentinel-k8s:0.11.0
    ```bash
    kubectl apply -f deploy/install.yaml
    # or install it online
-   kubectl apply -f https://raw.githubusercontent.com/pixelvide/cloud-sentinel-k8s/refs/tags/v0.11.0/deploy/install.yaml
+   kubectl apply -f https://raw.githubusercontent.com/pixelvide/cloud-sentinel-k8s/refs/tags/v0.12.0/deploy/install.yaml
    ```
 
 2. **Access via port-forward**
