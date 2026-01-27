@@ -287,28 +287,62 @@ func GetRelatedResources(c *gin.Context) {
 	case *appsv1.Deployment:
 		podSpec = &res.Spec.Template
 		selector = res.Spec.Selector
+		// Find ReplicaSets owned by this Deployment
+		var rsList appsv1.ReplicaSetList
+		if err := cs.K8sClient.List(ctx, &rsList, client.InNamespace(namespace)); err == nil {
+			for _, rs := range rsList.Items {
+				for _, owner := range rs.OwnerReferences {
+					if owner.Kind == "Deployment" && owner.Name == res.Name {
+						result = append(result, common.RelatedResource{
+							Type:       "replicasets",
+							Name:       rs.Name,
+							Namespace:  rs.Namespace,
+							APIVersion: "apps/v1",
+						})
+						break
+					}
+				}
+			}
+		}
+
 	case *appsv1.StatefulSet:
 		podSpec = &res.Spec.Template
 		selector = res.Spec.Selector
 	case *appsv1.DaemonSet:
 		podSpec = &res.Spec.Template
 		selector = res.Spec.Selector
+	case *appsv1.ReplicaSet:
+		podSpec = &res.Spec.Template
+		selector = res.Spec.Selector
+		// Check owner references for Deployment
+		for _, owner := range res.OwnerReferences {
+			if owner.Kind == "Deployment" {
+				result = append(result, common.RelatedResource{
+					Type:       "deployments",
+					Name:       owner.Name,
+					Namespace:  namespace,
+					APIVersion: "apps/v1",
+				})
+			}
+		}
+
 	case *corev1.Service:
 		relatedPods := discoverPodsByService(ctx, cs.K8sClient, res)
 		result = append(result, relatedPods...)
 	case *corev1.ConfigMap, *corev1.Secret, *corev1.PersistentVolumeClaim:
-		if workloads, err := discoveryWorkloads(ctx, cs.K8sClient, namespace, name, resourceType); err != nil {
+		workloads, err := discoveryWorkloads(ctx, cs.K8sClient, namespace, name, resourceType)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to discover workloads: " + err.Error()})
 			return
-		} else {
-			if resourceType == "persistentvolumeclaims" {
-				result = append(result, common.RelatedResource{
-					Type: "persistentvolumes",
-					Name: res.(*corev1.PersistentVolumeClaim).Spec.VolumeName,
-				})
-			}
-			result = append(result, workloads...)
 		}
+
+		if resourceType == "persistentvolumeclaims" {
+			result = append(result, common.RelatedResource{
+				Type: "persistentvolumes",
+				Name: res.(*corev1.PersistentVolumeClaim).Spec.VolumeName,
+			})
+		}
+		result = append(result, workloads...)
 	case *gatewayapiv1.HTTPRoute:
 		result = getHTTPRouteRelatedResouces(res, namespace)
 	case *autoscalingv2.HorizontalPodAutoscaler:
@@ -331,34 +365,48 @@ func GetRelatedResources(c *gin.Context) {
 	}
 
 	if v, ok := resource.(client.Object); ok {
-		for _, owner := range v.GetOwnerReferences() {
-			if owner.Kind == "ReplicaSet" {
-				// get the owner of the ReplicaSet
-				rs := &appsv1.ReplicaSet{}
-				if err := cs.K8sClient.Get(ctx, client.ObjectKey{Namespace: v.GetNamespace(), Name: owner.Name}, rs); err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get ReplicaSet owner: " + err.Error()})
-					return
-				}
-				if len(rs.OwnerReferences) > 0 {
-					for _, rsOwner := range rs.OwnerReferences {
-						result = append(result, common.RelatedResource{
-							Type:      strings.ToLower(rsOwner.Kind) + "s",
-							Name:      rsOwner.Name,
-							Namespace: v.GetNamespace(),
-						})
-					}
+		// Generic owner reference check
+		owners := discoverOwners(ctx, cs, v)
+		result = append(result, owners...)
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func discoverOwners(ctx context.Context, cs *cluster.ClientSet, resource client.Object) []common.RelatedResource {
+	var result []common.RelatedResource
+	for _, owner := range resource.GetOwnerReferences() {
+		// Logic: If I am owned by a ReplicaSet (e.g. I am a Pod), then find that RS, and then find who owns that RS (e.g. Deployment)
+		if owner.Kind == "ReplicaSet" {
+			// get the owner of the ReplicaSet
+			rs := &appsv1.ReplicaSet{}
+			if err := cs.K8sClient.Get(ctx, client.ObjectKey{Namespace: resource.GetNamespace(), Name: owner.Name}, rs); err == nil && len(rs.OwnerReferences) > 0 {
+				for _, rsOwner := range rs.OwnerReferences {
+					result = append(result, common.RelatedResource{
+						Type:      strings.ToLower(rsOwner.Kind) + "s",
+						Name:      rsOwner.Name,
+						Namespace: resource.GetNamespace(),
+					})
 				}
 			}
+		}
+
+		// Avoid adding duplicate if we are processing a ReplicaSet itself (handled above)
+		isDup := false
+		if _, isRS := resource.(*appsv1.ReplicaSet); isRS && owner.Kind == "Deployment" {
+			isDup = true
+		}
+
+		if !isDup {
 			result = append(result, common.RelatedResource{
 				Type:       strings.ToLower(owner.Kind) + "s",
 				Name:       owner.Name,
-				Namespace:  v.GetNamespace(),
+				Namespace:  resource.GetNamespace(),
 				APIVersion: owner.APIVersion,
 			})
 		}
 	}
-
-	c.JSON(http.StatusOK, result)
+	return result
 }
 
 func getHTTPRouteRelatedResouces(res *gatewayapiv1.HTTPRoute, namespace string) []common.RelatedResource {

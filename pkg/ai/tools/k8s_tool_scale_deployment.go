@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/pixelvide/cloud-sentinel-k8s/pkg/model"
 	openai "github.com/sashabaranov/go-openai"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -85,6 +86,50 @@ func (t *ScaleDeploymentTool) Execute(ctx context.Context, args string) (string,
 			params.Namespace, params.Name, currentReplicas, params.Replicas), nil
 	}
 
+	var finalErr error
+	defer func() {
+		// Audit Log
+		user, err := GetUser(ctx)
+		if err == nil && user != nil {
+			errMsg := ""
+			if finalErr != nil {
+				errMsg = finalErr.Error()
+			}
+			payload := map[string]interface{}{
+				"clusterName":      cs.Name,
+				"resourceType":     "deployments",
+				"resourceName":     params.Name,
+				"namespace":        params.Namespace,
+				"action":           "scale",
+				"previousReplicas": currentReplicas,
+				"targetReplicas":   params.Replicas,
+			}
+
+			// Add AI context if available
+			sessionID := GetSessionID(ctx)
+			if sessionID != "" {
+				payload["source"] = "ai"
+				payload["chatSessionId"] = sessionID
+			}
+
+			payloadBytes, err := json.Marshal(payload)
+			if err != nil {
+				payloadBytes = []byte("{}")
+			}
+
+			model.DB.Create(&model.AuditLog{
+				AppID:        model.CurrentApp.ID,
+				Action:       "scale",
+				ActorID:      user.ID,
+				Payload:      string(payloadBytes),
+				Success:      finalErr == nil,
+				ErrorMessage: errMsg,
+				// IP and UserAgent are not easily available here without threading more context,
+				// but ActorID is the most important.
+			})
+		}
+	}()
+
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		d, err := deployClient.Get(ctx, params.Name, metav1.GetOptions{})
 		if err != nil {
@@ -96,6 +141,7 @@ func (t *ScaleDeploymentTool) Execute(ctx context.Context, args string) (string,
 	})
 
 	if retryErr != nil {
+		finalErr = retryErr
 		return "", fmt.Errorf("failed to update deployment: %w", retryErr)
 	}
 
